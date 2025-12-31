@@ -10,7 +10,8 @@ const supabase = createClient(
 // GET /api/tokens/[mint_address] - Fetch a specific token by mint address
 export async function GET(request, { params }) {
   try {
-    const { mint_address } = params;
+    // In Next.js 15, params is a Promise
+    const { mint_address } = await params;
 
     if (!mint_address) {
       return NextResponse.json(
