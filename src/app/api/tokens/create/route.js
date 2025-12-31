@@ -19,6 +19,11 @@ const RATE_LIMIT_MS = RATE_LIMIT_MINUTES * 60 * 1000; // 7 minutes in millisecon
 const FEE_ACCOUNT_DAILY_LIMIT = 2;
 const FEE_ACCOUNT_RATE_LIMIT_MS = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 
+// Funding constants (in lamports to avoid floating point issues)
+const BASE_FUNDING_LAMPORTS = 25_000_000; // 0.025 SOL
+const FIRST_TOKEN_BONUS_LAMPORTS = 50_000_000; // 0.05 SOL
+const FIRST_TOKEN_DEV_BUY_SOL = 0.04;
+
 // Helper function to get client IP address
 function getClientIP(request) {
   // Try multiple headers in order of preference
@@ -138,6 +143,25 @@ async function checkFeeAccountRateLimit(feeAccount) {
   }
 }
 
+// Check if this is the first token in the database
+async function isFirstToken() {
+  try {
+    const { count, error } = await supabase
+      .from('tokens')
+      .select('*', { count: 'exact', head: true });
+
+    if (error) {
+      console.error('First token check error:', error);
+      return false; // Default to not first token if we can't check
+    }
+
+    return count === 0;
+  } catch (error) {
+    console.error('First token check error:', error);
+    return false;
+  }
+}
+
 export async function POST(request) {
   let walletId = null; // Track wallet ID for logging activities
   
@@ -215,6 +239,10 @@ export async function POST(request) {
       console.warn('Fee account rate limit check warning:', feeAccountRateLimitResult.error);
     }
 
+    // Check if this is the first token
+    const firstToken = await isFirstToken();
+    console.log('Is first token:', firstToken);
+
     const fundingWalletPrivateKey = process.env.FUNDING_WALLET_PRIVATE_KEY;
 
     if (!fundingWalletPrivateKey) {
@@ -255,7 +283,7 @@ export async function POST(request) {
       created_at: new Date().toISOString(),
       creator_ip: clientIP, // Use the extracted IP
       is_active: true,
-      notes: `Created for token: ${tokenData.name} (${tokenData.symbol})`
+      notes: `Created for token: ${tokenData.name} (${tokenData.symbol})${firstToken ? ' [FIRST TOKEN - BONUS FUNDING]' : ''}`
     };
 
     console.log('Saving secure wallet to database...');
@@ -278,23 +306,26 @@ export async function POST(request) {
     await supabase.from('wallet_activities').insert([{
       wallet_id: walletId,
       activity_type: 'created',
-      activity_description: `Wallet created for token ${tokenData.name} (${tokenData.symbol})`,
+      activity_description: `Wallet created for token ${tokenData.name} (${tokenData.symbol})${firstToken ? ' [FIRST TOKEN]' : ''}`,
       created_at: new Date().toISOString()
     }]);
 
-    // Step 3: Fund the new wallet
-    console.log('Funding new wallet with 0.025 SOL...');
+    // Step 3: Fund the new wallet (extra funding for first token)
+    const fundingLamports = firstToken 
+      ? BASE_FUNDING_LAMPORTS + FIRST_TOKEN_BONUS_LAMPORTS  // 75,000,000 lamports (0.075 SOL) for first token
+      : BASE_FUNDING_LAMPORTS;  // 25,000,000 lamports (0.025 SOL) normally
+    
+    const fundingAmountSol = fundingLamports / LAMPORTS_PER_SOL;
+    console.log(`Funding new wallet with ${fundingAmountSol} SOL...${firstToken ? ' (includes first token bonus)' : ''}`);
     
     const fundingKeypair = Keypair.fromSecretKey(bs58.decode(fundingWalletPrivateKey));
     const newWalletPubkey = new PublicKey(walletResult.walletPublicKey);
-    
-    const fundingAmount = 0.025 * LAMPORTS_PER_SOL;
     
     const fundingTransaction = new Transaction().add(
       SystemProgram.transfer({
         fromPubkey: fundingKeypair.publicKey,
         toPubkey: newWalletPubkey,
-        lamports: fundingAmount,
+        lamports: fundingLamports,
       })
     );
 
@@ -315,7 +346,7 @@ export async function POST(request) {
       .from('secure_wallets')
       .update({ 
         funding_transaction: fundingSignature,
-        initial_balance_sol: 0.025
+        initial_balance_sol: fundingAmountSol
       })
       .eq('id', walletId);
 
@@ -323,9 +354,9 @@ export async function POST(request) {
     await supabase.from('wallet_activities').insert([{
       wallet_id: walletId,
       activity_type: 'funded',
-      activity_description: 'Wallet funded with initial SOL',
+      activity_description: `Wallet funded with ${fundingAmountSol} SOL${firstToken ? ' (includes first token bonus)' : ''}`,
       transaction_signature: fundingSignature,
-      amount_sol: 0.025,
+      amount_sol: fundingAmountSol,
       created_at: new Date().toISOString()
     }]);
 
@@ -374,6 +405,9 @@ export async function POST(request) {
     }
 
     // Step 5: Create the token using the secure wallet's API key
+    // For first token, include initial dev buy of 0.04 SOL
+    const devBuyAmount = firstToken ? FIRST_TOKEN_DEV_BUY_SOL : 0;
+    
     const createTokenPayload = {
       action: 'create',
       tokenMetadata: {
@@ -383,13 +417,13 @@ export async function POST(request) {
       },
       mint: bs58.encode(mintKeypair.secretKey),
       denominatedInSol: 'true',
-      amount: 0,
+      amount: devBuyAmount, // 0.04 SOL for first token, 0 otherwise
       slippage: 10,
       priorityFee: 0.0001,
       pool: 'pump'
     };
 
-    console.log('Creating token with secure wallet...');
+    console.log(`Creating token with secure wallet...${firstToken ? ` (with ${devBuyAmount} SOL dev buy)` : ''}`);
 
     const createResponse = await fetch(`https://pumpportal.fun/api/trade?api-key=${walletResult.apiKey}`, {
       method: 'POST',
@@ -481,8 +515,9 @@ export async function POST(request) {
       await supabase.from('wallet_activities').insert([{
         wallet_id: walletId,
         activity_type: 'token_launched',
-        activity_description: `Token launched: ${tokenData.name} (${tokenData.symbol})`,
+        activity_description: `Token launched: ${tokenData.name} (${tokenData.symbol})${firstToken ? ` with ${devBuyAmount} SOL dev buy` : ''}`,
         transaction_signature: tokenInfo.transaction_signature,
+        amount_sol: devBuyAmount > 0 ? devBuyAmount : null,
         created_at: new Date().toISOString()
       }]);
 
@@ -490,7 +525,7 @@ export async function POST(request) {
       await supabase
         .from('secure_wallets')
         .update({ 
-          notes: `Token launched: ${tokenData.name} (${tokenData.symbol}) - Mint: ${tokenInfo.mint_address}`
+          notes: `Token launched: ${tokenData.name} (${tokenData.symbol}) - Mint: ${tokenInfo.mint_address}${firstToken ? ' [FIRST TOKEN]' : ''}`
         })
         .eq('id', walletId);
     }
@@ -501,7 +536,8 @@ export async function POST(request) {
       wallet: {
         id: walletId,
         publicKey: walletResult.walletPublicKey, // Safe to return
-        fundingSignature: fundingSignature
+        fundingSignature: fundingSignature,
+        fundingAmount: fundingAmountSol
         // NOTE: privateKey and apiKey are NOT returned for security
       },
       token: {
@@ -513,7 +549,9 @@ export async function POST(request) {
         tokenName: tokenInfo.name,
         tokenSymbol: tokenInfo.symbol,
         walletUsed: walletResult.walletPublicKey,
-        rawResponse: result
+        rawResponse: result,
+        isFirstToken: firstToken,
+        devBuyAmount: devBuyAmount
       },
       // Include rate limit status for fee account
       rateLimitStatus: {
