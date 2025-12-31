@@ -187,7 +187,6 @@ export default function Home() {
             <TokensList />
           </div>
 
-          {/* Recent Buys Section - Under TokensList */}
           <div className='w-screen mt-8'>
             <RecentBuys />
           </div>

@@ -75,7 +75,7 @@ export default function Token() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#15161B] flex items-center justify-center">
+      <div className="min-h-screen bg-[#000] flex items-center justify-center">
         <div className="animate-spin rounded-full size-8 border-2 border-gray-300 border-t-[#67D682]"></div>
       </div>
     );
@@ -83,7 +83,7 @@ export default function Token() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-[#15161B]">
+      <div className="min-h-screen bg-[#000]">
         <Link
           href="/"
           className="absolute top-[3%] left-[3%] px-4 py-2 text-gray-500"
