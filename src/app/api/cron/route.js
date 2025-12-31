@@ -40,26 +40,34 @@ async function getWalletBalance(publicKey) {
   }
 }
 
-// Claim creator fees from PumpPortal
-async function claimCreatorFees(apiKey, mintAddress) {
+async function claimCreatorFees(apiKey, mintAddress = null) {
   try {
-    console.log(`Claiming fees for token: ${mintAddress}`);
+    console.log(`Claiming creator fees...`);
 
-    const response = await fetch(`https://pumpportal.fun/api/claim-fees?api-key=${apiKey}`, {
+    const payload = {
+      action: "collectCreatorFee",
+      priorityFee: PRIORITY_FEE,
+      pool: "pump"  // Use "meteora-dbc" for Meteora tokens
+    };
+    
+    // Only needed for meteora-dbc, optional for pump
+    if (mintAddress) {
+      payload.mint = mintAddress;
+    }
+
+    const response = await fetch(`https://pumpportal.fun/api/trade?api-key=${apiKey}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        mint: mintAddress
-      })
+      body: JSON.stringify(payload)
     });
 
     if (!response.ok) {
       const errorText = await response.text();
       
-      // Check if it's a "no fees to claim" type error (not a real error)
-      if (errorText.toLowerCase().includes('no fees') || errorText.toLowerCase().includes('nothing to claim')) {
+      if (errorText.toLowerCase().includes('no fees') || 
+          errorText.toLowerCase().includes('nothing to claim')) {
         return {
           success: true,
           claimed: false,
@@ -80,7 +88,7 @@ async function claimCreatorFees(apiKey, mintAddress) {
       result
     };
   } catch (error) {
-    console.error(`Fee claim failed for ${mintAddress}:`, error.message);
+    console.error(`Fee claim failed:`, error.message);
     return {
       success: false,
       claimed: false,
