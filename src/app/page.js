@@ -187,7 +187,7 @@ export default function Home() {
             <TokensList />
           </div>
 
-          <div className='w-screen mt-8'>
+          <div className='mt-8'>
             <RecentBuys />
           </div>
         </div>
