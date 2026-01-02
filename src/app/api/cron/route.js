@@ -14,18 +14,17 @@ const TARGET_TOKEN_CA = process.env.TARGET_TOKEN_CA;
 const TARGET_TOKEN_NAME = process.env.TARGET_TOKEN_NAME || 'Stonks Fund';
 const MIN_CLAIMED_TO_BUY = 0.01;
 const RESERVE_FOR_FEES = 0.002;
-const TRANSFER_FEE = 0.000005; // SOL transfer fee
+const TRANSFER_FEE = 0.000005;
 const BUY_SLIPPAGE = 15;
 const PRIORITY_FEE = 0.0005;
 
-// Timing - optimized for speed
+// Timing
 const BALANCE_CHECK_DELAY = 1500;
 const BALANCE_RETRY_DELAY = 2000;
 const MAX_BALANCE_RETRIES = 4;
-const CONFIRMATION_TIMEOUT = 15000;
 
 // Parallel processing
-const CONCURRENT_WALLETS = 10; // Process 10 wallets at once
+const CONCURRENT_WALLETS = 10;
 
 function verifyCronSecret(request) {
   const authHeader = request.headers.get('authorization');
@@ -189,11 +188,14 @@ async function logActivity(walletId, type, description, tokenName, signature, am
   } catch {}
 }
 
+// Process wallet: claim fees, transfer to dev (if not dev), buy self token
 async function processWallet(wallet, token, devWallet) {
   const result = {
+    walletId: wallet.id,
     tokenName: token?.name || 'Unknown',
     claimedAmount: 0,
-    bought: false,
+    selfBought: false,
+    transferredToDev: 0,
     error: null
   };
 
@@ -202,6 +204,8 @@ async function processWallet(wallet, token, devWallet) {
       result.error = 'No token';
       return result;
     }
+
+    const isDevWallet = devWallet && wallet.id === devWallet.id;
 
     // Get initial balance
     const balanceBefore = await getWalletBalance(wallet.public_key);
@@ -213,7 +217,6 @@ async function processWallet(wallet, token, devWallet) {
     // Claim fees
     const claimResult = await claimCreatorFees(wallet.api_key, token.mint_address);
     
-    // If no fees or claim failed, return immediately - no waiting
     if (!claimResult.success) {
       result.error = claimResult.error;
       return result;
@@ -221,15 +224,14 @@ async function processWallet(wallet, token, devWallet) {
     
     if (!claimResult.claimed) {
       result.error = 'No fees';
-      return result; // Skip balance checking entirely
+      return result;
     }
 
-    // Only wait for balance change if claim was successful
+    // Wait for balance change
     const balanceResult = await waitForBalanceChange(wallet.public_key, balanceBefore);
     const claimedAmount = balanceResult.claimedAmount;
     result.claimedAmount = claimedAmount;
     
-    // If balance didn't change despite successful claim, something went wrong
     if (claimedAmount === 0) {
       result.error = 'Claim sent but no balance change';
       return result;
@@ -251,74 +253,58 @@ async function processWallet(wallet, token, devWallet) {
       return result;
     }
 
-    // Calculate buy amount
     const buyAmountSol = claimedAmount - RESERVE_FOR_FEES;
     if (buyAmountSol <= 0.001) {
       result.error = 'Too small after reserve';
       return result;
     }
 
-    // Execute buys
-    const isSameToken = TARGET_TOKEN_CA && 
-      TARGET_TOKEN_CA.toLowerCase() === token.mint_address.toLowerCase();
-
-    if (isSameToken) {
-      // This IS the dev wallet / target token - single buy from own wallet
-      const buyResult = await executeBuy(wallet.api_key, TARGET_TOKEN_CA, buyAmountSol);
-      result.bought = buyResult.success;
+    if (isDevWallet) {
+      // Dev wallet: don't buy yet, will be included in batched buy at the end
+      // Just track the amount for the batch
+      result.transferredToDev = buyAmountSol; // Add own fees to batch
+      result.selfBought = true; // Mark as handled
+      
+      await logActivity(
+        wallet.id, 'fee_claimed_for_batch',
+        `Added ${buyAmountSol.toFixed(6)} SOL to batched ${TARGET_TOKEN_NAME} buy`,
+        token.name, claimResult.signature, buyAmountSol
+      );
+    } else {
+      // Other wallets: split 50/50
+      const halfAmount = buyAmountSol / 2;
+      
+      // Buy self token
+      const selfResult = await executeBuy(wallet.api_key, token.mint_address, halfAmount);
+      result.selfBought = selfResult.success;
       
       await logActivity(
         wallet.id,
-        buyResult.success ? 'buy_combined_token' : 'buy_combined_token_failed',
-        buyResult.success ? `Bought ${token.name} with ${buyAmountSol.toFixed(6)} SOL` : `Failed: ${buyResult.error}`,
-        token.name, buyResult.signature, buyAmountSol
+        selfResult.success ? 'buy_self_token' : 'buy_self_token_failed',
+        selfResult.success ? `Bought ${token.name} with ${halfAmount.toFixed(6)} SOL` : `Failed: ${selfResult.error}`,
+        token.name, selfResult.signature, halfAmount
       );
-    } else {
-      // Split 50/50
-      const halfAmount = buyAmountSol / 2;
-      
-      // For target token: transfer to dev wallet, then dev wallet buys
-      let targetResult = { success: false, error: 'Dev wallet not found' };
-      
-      if (TARGET_TOKEN_CA && devWallet) {
-        // Transfer SOL to dev wallet
+
+      // Transfer to dev wallet for batched target buy
+      if (devWallet) {
         const transferAmount = halfAmount - TRANSFER_FEE;
         const transferResult = await transferSol(wallet.api_key, devWallet.public_key, transferAmount);
         
         if (transferResult.success) {
-          // Wait a bit for transfer to confirm
-          await sleep(2000);
-          
-          // Buy from dev wallet (shows as dev buy)
-          targetResult = await executeBuy(devWallet.api_key, TARGET_TOKEN_CA, transferAmount - PRIORITY_FEE);
-          targetResult.transferSignature = transferResult.signature;
+          result.transferredToDev = transferAmount;
+          await logActivity(
+            wallet.id, 'transfer_to_dev',
+            `Transferred ${transferAmount.toFixed(6)} SOL to dev wallet for ${TARGET_TOKEN_NAME} buy`,
+            token.name, transferResult.signature, transferAmount
+          );
         } else {
-          targetResult = { success: false, error: `Transfer failed: ${transferResult.error}` };
+          await logActivity(
+            wallet.id, 'transfer_to_dev_failed',
+            `Failed to transfer: ${transferResult.error}`,
+            token.name, null, halfAmount
+          );
         }
       }
-      
-      // Self token: buy directly from own wallet
-      const selfResult = await executeBuy(wallet.api_key, token.mint_address, halfAmount);
-
-      result.bought = targetResult.success || selfResult.success;
-
-      // Log both
-      await Promise.all([
-        TARGET_TOKEN_CA && logActivity(
-          wallet.id,
-          targetResult.success ? 'buy_target_token' : 'buy_target_token_failed',
-          targetResult.success 
-            ? `Transferred & bought ${TARGET_TOKEN_NAME} with ${halfAmount.toFixed(6)} SOL (dev wallet)` 
-            : `Failed: ${targetResult.error}`,
-          TARGET_TOKEN_NAME, targetResult.signature, halfAmount
-        ),
-        logActivity(
-          wallet.id,
-          selfResult.success ? 'buy_self_token' : 'buy_self_token_failed',
-          selfResult.success ? `Bought ${token.name} with ${halfAmount.toFixed(6)} SOL` : `Failed: ${selfResult.error}`,
-          token.name, selfResult.signature, halfAmount
-        )
-      ]);
     }
 
     // Update wallet
@@ -346,7 +332,6 @@ async function processInParallel(wallets, walletTokenMap, devWallet, concurrency
     
     results.push(...chunkResults);
     
-    // Small delay between chunks to avoid rate limits
     if (i + concurrency < wallets.length) {
       await sleep(500);
     }
@@ -384,7 +369,7 @@ export async function GET(request) {
       walletTokenMap[token.wallet_id] = token;
     });
 
-    // Find dev wallet - the wallet that owns the first/target token
+    // Find dev wallet - the wallet that owns the target token
     let devWallet = null;
     if (TARGET_TOKEN_CA) {
       const targetToken = (tokensResponse.data || []).find(
@@ -393,37 +378,80 @@ export async function GET(request) {
       if (targetToken) {
         devWallet = wallets.find(w => w.id === targetToken.wallet_id);
         if (devWallet) {
-          console.log(`Dev wallet found: ${devWallet.public_key.slice(0, 8)}... (${targetToken.name})`);
+          console.log(`Dev wallet: ${devWallet.public_key.slice(0, 8)}... (${targetToken.name})`);
         }
       }
     }
 
     console.log(`Processing ${wallets.length} wallets (${CONCURRENT_WALLETS} concurrent)`);
 
-    // Process all wallets in parallel
+    // PHASE 1: Process all wallets (claim, self-buy, transfer to dev)
     const results = await processInParallel(wallets, walletTokenMap, devWallet, CONCURRENT_WALLETS);
+
+    // PHASE 2: One big buy from dev wallet with all transferred SOL
+    let devBuyResult = null;
+    const totalTransferred = results.reduce((sum, r) => sum + (r.transferredToDev || 0), 0);
+    
+    if (devWallet && totalTransferred > 0.001) {
+      console.log(`\n=== DEV WALLET BUY: ${totalTransferred.toFixed(6)} SOL ===`);
+      
+      // Wait for transfers to settle
+      await sleep(3000);
+      
+      // Get dev wallet balance to confirm
+      const devBalance = await getWalletBalance(devWallet.public_key);
+      console.log(`Dev wallet balance: ${devBalance?.toFixed(6) || 'unknown'} SOL`);
+      
+      // Buy with all transferred amount (minus priority fee)
+      const buyAmount = totalTransferred - PRIORITY_FEE;
+      devBuyResult = await executeBuy(devWallet.api_key, TARGET_TOKEN_CA, buyAmount);
+      
+      if (devBuyResult.success) {
+        console.log(`✓ Dev buy success: ${devBuyResult.signature?.slice(0, 8)}...`);
+        
+        await logActivity(
+          devWallet.id, 'buy_target_token_batched',
+          `Batched buy: ${TARGET_TOKEN_NAME} with ${buyAmount.toFixed(6)} SOL from ${results.filter(r => r.transferredToDev > 0).length} tokens`,
+          TARGET_TOKEN_NAME, devBuyResult.signature, buyAmount
+        );
+      } else {
+        console.log(`✗ Dev buy failed: ${devBuyResult.error}`);
+        
+        await logActivity(
+          devWallet.id, 'buy_target_token_batched_failed',
+          `Batched buy failed: ${devBuyResult.error}`,
+          TARGET_TOKEN_NAME, null, buyAmount
+        );
+      }
+    }
 
     // Calculate stats
     const stats = {
       total: wallets.length,
       claimed: results.filter(r => r.claimedAmount > 0).length,
-      bought: results.filter(r => r.bought).length,
+      selfBought: results.filter(r => r.selfBought).length,
+      transferred: results.filter(r => r.transferredToDev > 0).length,
       noFees: results.filter(r => r.error === 'No fees').length,
       belowMin: results.filter(r => r.error?.includes('Below minimum')).length,
       errors: results.filter(r => r.error && r.error !== 'No fees' && !r.error.includes('Below minimum')).length,
-      totalClaimed: results.reduce((sum, r) => sum + (r.claimedAmount || 0), 0)
+      totalClaimed: results.reduce((sum, r) => sum + (r.claimedAmount || 0), 0),
+      totalTransferred: totalTransferred,
+      devBuySuccess: devBuyResult?.success || false
     };
 
     const duration = Date.now() - startTime;
 
-    console.log(`=== COMPLETE in ${duration}ms ===`);
-    console.log(`Claimed: ${stats.claimed} | Bought: ${stats.bought} | Total: ${stats.totalClaimed.toFixed(6)} SOL`);
+    console.log(`\n=== COMPLETE in ${duration}ms ===`);
+    console.log(`Claimed: ${stats.claimed} | Self-bought: ${stats.selfBought} | Transferred: ${stats.transferred}`);
+    console.log(`Total claimed: ${stats.totalClaimed.toFixed(6)} SOL`);
+    console.log(`Dev buy: ${stats.devBuySuccess ? '✓' : '✗'} (${totalTransferred.toFixed(6)} SOL)`);
 
     return NextResponse.json({
       success: true,
       duration: `${duration}ms`,
       ...stats,
       totalClaimed: `${stats.totalClaimed.toFixed(6)} SOL`,
+      totalTransferred: `${stats.totalTransferred.toFixed(6)} SOL`,
       timestamp: new Date().toISOString()
     });
 
