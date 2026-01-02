@@ -9,7 +9,7 @@ const pixelify = Pixelify_Sans({
 })
 
 export const metadata: Metadata = {
-  title: 'Memestonks',
+  title: 'Stonk | Launch a Stonk',
   description: 'giving our memestonks value with an automated flywheel protocol',
 }
 
