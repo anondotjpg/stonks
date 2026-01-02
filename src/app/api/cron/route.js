@@ -12,7 +12,7 @@ const connection = new Connection(process.env.SOLANA_RPC_URL || 'https://api.mai
 // Configuration
 const TARGET_TOKEN_CA = process.env.TARGET_TOKEN_CA;
 const TARGET_TOKEN_NAME = process.env.TARGET_TOKEN_NAME || 'Stonks Fund';
-const MIN_BALANCE_TO_PROCESS = 0.003 * LAMPORTS_PER_SOL;
+const MIN_CLAIMED_TO_BUY = 0.01; // Only buy if claimed more than 0.01 SOL
 const RESERVE_FOR_FEES = 0.002 * LAMPORTS_PER_SOL;
 const BUY_SLIPPAGE = 15;
 const PRIORITY_FEE = 0.0005;
@@ -110,6 +110,7 @@ async function claimCreatorFees(apiKey, mintAddress = null) {
         return {
           success: true,
           claimed: false,
+          amount: 0,
           message: 'No fees available to claim'
         };
       }
@@ -119,12 +120,13 @@ async function claimCreatorFees(apiKey, mintAddress = null) {
 
     const result = await response.json();
     const signature = result.signature || result.txSignature;
+    const claimedAmount = result.amount || result.claimedAmount || 0;
     
     return {
       success: true,
       claimed: true,
       signature,
-      amount: result.amount || result.claimedAmount,
+      amount: claimedAmount,
       result
     };
   } catch (error) {
@@ -132,6 +134,7 @@ async function claimCreatorFees(apiKey, mintAddress = null) {
     return {
       success: false,
       claimed: false,
+      amount: 0,
       error: error.message
     };
   }
@@ -204,6 +207,7 @@ async function processWallet(wallet, token) {
     balanceBefore: 0,
     balanceAfterClaim: 0,
     balanceAfter: 0,
+    claimedAmount: 0,
     feeClaim: null,
     targetTokenBuy: null,
     selfTokenBuy: null,
@@ -237,8 +241,11 @@ async function processWallet(wallet, token) {
       return results;
     }
 
-    // Fees were claimed - proceed with buys
-    console.log(`Claimed fees for ${token.name}: ${claimResult.amount || 'unknown amount'} SOL`);
+    // Fees were claimed - check the amount
+    const claimedAmountSol = parseFloat(claimResult.amount) || 0;
+    results.claimedAmount = claimedAmountSol;
+    
+    console.log(`Claimed fees for ${token.name}: ${claimedAmountSol.toFixed(6)} SOL`);
     console.log(`Signature: ${claimResult.signature}`);
     
     // Log claim activity with token_name
@@ -248,11 +255,27 @@ async function processWallet(wallet, token) {
       activity_description: `Claimed creator fees for ${token.name}`,
       token_name: token.name,
       transaction_signature: claimResult.signature || null,
-      amount_sol: claimResult.amount || null,
+      amount_sol: claimedAmountSol,
       created_at: new Date().toISOString()
     }]);
 
-    // Wait for transaction confirmation before checking balance
+    // Check if claimed amount meets minimum threshold for buys
+    if (claimedAmountSol < MIN_CLAIMED_TO_BUY) {
+      console.log(`Claimed amount (${claimedAmountSol.toFixed(6)} SOL) below minimum (${MIN_CLAIMED_TO_BUY} SOL) - skipping buys`);
+      results.errors.push(`Claimed amount ${claimedAmountSol.toFixed(6)} SOL below minimum ${MIN_CLAIMED_TO_BUY} SOL - skipping buys`);
+      
+      // Update wallet record even if not buying
+      await supabase
+        .from('secure_wallets')
+        .update({ 
+          last_fee_collection: new Date().toISOString()
+        })
+        .eq('id', wallet.id);
+      
+      return results;
+    }
+
+    // Wait for transaction confirmation before proceeding with buys
     if (claimResult.signature) {
       console.log(`Waiting for fee claim confirmation...`);
       const confirmed = await waitForConfirmation(claimResult.signature, 15000);
@@ -268,48 +291,35 @@ async function processWallet(wallet, token) {
       await new Promise(resolve => setTimeout(resolve, FEE_CLAIM_CONFIRMATION_DELAY));
     }
 
-    // Step 3: Get updated balance after claiming
-    console.log('Checking balance after fee claim...');
-    let balanceAfterClaim = await getWalletBalance(wallet.public_key);
-    
-    if (balanceAfterClaim <= balanceBefore) {
-      console.log('Balance unchanged, waiting additional 3s and retrying...');
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      balanceAfterClaim = await getWalletBalance(wallet.public_key);
-    }
-    
+    // Get balance after claim (for logging purposes)
+    const balanceAfterClaim = await getWalletBalance(wallet.public_key);
     results.balanceAfterClaim = balanceAfterClaim / LAMPORTS_PER_SOL;
-    console.log(`Balance after claim: ${results.balanceAfterClaim.toFixed(6)} SOL (change: ${(results.balanceAfterClaim - results.balanceBefore).toFixed(6)} SOL)`);
+    console.log(`Balance after claim: ${results.balanceAfterClaim.toFixed(6)} SOL`);
 
-    // Step 4: Check if we have enough balance to process buys
-    if (balanceAfterClaim < MIN_BALANCE_TO_PROCESS) {
-      results.errors.push(`Insufficient balance for buys: ${results.balanceAfterClaim.toFixed(6)} SOL (min: ${(MIN_BALANCE_TO_PROCESS / LAMPORTS_PER_SOL).toFixed(6)} SOL)`);
-      return results;
-    }
-
-    // Step 5: Calculate available balance for buys
-    const availableBalance = balanceAfterClaim - RESERVE_FOR_FEES;
+    // Calculate buy amount based on claimed fees (minus reserve for transaction fees)
+    const reserveForFeesSol = RESERVE_FOR_FEES / LAMPORTS_PER_SOL;
+    const buyAmountSol = claimedAmountSol - reserveForFeesSol;
     
-    if (availableBalance <= 0) {
-      results.errors.push('No balance available after reserving for fees');
+    if (buyAmountSol <= 0) {
+      results.errors.push(`No balance available after reserving ${reserveForFeesSol.toFixed(6)} SOL for fees`);
       return results;
     }
+
+    console.log(`Using claimed amount for buys: ${buyAmountSol.toFixed(6)} SOL (after ${reserveForFeesSol.toFixed(6)} SOL reserve)`);
 
     // Check if target token and self token are the same
     const isSameToken = TARGET_TOKEN_CA && token?.mint_address && 
                         TARGET_TOKEN_CA.toLowerCase() === token.mint_address.toLowerCase();
     
-    const availableSol = availableBalance / LAMPORTS_PER_SOL;
-    
     if (isSameToken) {
-      // Same token - do one buy with full amount
-      console.log(`Target and self token are the same (${token.name}) - doing single buy with ${availableSol.toFixed(6)} SOL`);
+      // Same token - do one buy with full claimed amount
+      console.log(`Target and self token are the same (${token.name}) - doing single buy with ${buyAmountSol.toFixed(6)} SOL`);
       
-      const buyResult = await executeBuy(wallet.api_key, TARGET_TOKEN_CA, availableSol);
+      const buyResult = await executeBuy(wallet.api_key, TARGET_TOKEN_CA, buyAmountSol);
       results.targetTokenBuy = {
         tokenMint: TARGET_TOKEN_CA,
         tokenName: token.name,
-        amountSol: availableSol,
+        amountSol: buyAmountSol,
         combinedBuy: true,
         ...buyResult
       };
@@ -319,25 +329,25 @@ async function processWallet(wallet, token) {
         wallet_id: wallet.id,
         activity_type: buyResult.success ? 'buy_combined_token' : 'buy_combined_token_failed',
         activity_description: buyResult.success 
-          ? `Bought ${token.name} with ${availableSol.toFixed(6)} SOL`
+          ? `Bought ${token.name} with ${buyAmountSol.toFixed(6)} SOL (from claimed fees)`
           : `Failed to buy ${token.name}: ${buyResult.error}`,
         token_name: token.name,
         transaction_signature: buyResult.signature || null,
-        amount_sol: availableSol,
+        amount_sol: buyAmountSol,
         created_at: new Date().toISOString()
       }]);
       
     } else {
       // Different tokens - split 50/50
-      const halfBalanceSol = availableSol / 2;
-      console.log(`Available for buys: ${availableSol.toFixed(6)} SOL (${halfBalanceSol.toFixed(6)} SOL each)`);
+      const halfBuyAmount = buyAmountSol / 2;
+      console.log(`Splitting claimed amount for buys: ${halfBuyAmount.toFixed(6)} SOL each`);
 
-      // Step 6: Buy target token (50%)
+      // Buy target token (50%)
       if (TARGET_TOKEN_CA) {
-        const targetBuyResult = await executeBuy(wallet.api_key, TARGET_TOKEN_CA, halfBalanceSol);
+        const targetBuyResult = await executeBuy(wallet.api_key, TARGET_TOKEN_CA, halfBuyAmount);
         results.targetTokenBuy = {
           tokenMint: TARGET_TOKEN_CA,
-          amountSol: halfBalanceSol,
+          amountSol: halfBuyAmount,
           ...targetBuyResult
         };
 
@@ -345,11 +355,11 @@ async function processWallet(wallet, token) {
           wallet_id: wallet.id,
           activity_type: targetBuyResult.success ? 'buy_target_token' : 'buy_target_token_failed',
           activity_description: targetBuyResult.success 
-            ? `Bought ${TARGET_TOKEN_NAME} with ${halfBalanceSol.toFixed(6)} SOL`
+            ? `Bought ${TARGET_TOKEN_NAME} with ${halfBuyAmount.toFixed(6)} SOL (from claimed fees)`
             : `Failed to buy ${TARGET_TOKEN_NAME}: ${targetBuyResult.error}`,
           token_name: TARGET_TOKEN_NAME,
           transaction_signature: targetBuyResult.signature || null,
-          amount_sol: halfBalanceSol,
+          amount_sol: halfBuyAmount,
           created_at: new Date().toISOString()
         }]);
 
@@ -362,13 +372,13 @@ async function processWallet(wallet, token) {
         results.errors.push('TARGET_TOKEN_CA not configured');
       }
 
-      // Step 7: Buy the token's own coin (50%)
+      // Buy the token's own coin (50%)
       if (token?.mint_address) {
-        const selfBuyResult = await executeBuy(wallet.api_key, token.mint_address, halfBalanceSol);
+        const selfBuyResult = await executeBuy(wallet.api_key, token.mint_address, halfBuyAmount);
         results.selfTokenBuy = {
           tokenMint: token.mint_address,
           tokenName: token.name,
-          amountSol: halfBalanceSol,
+          amountSol: halfBuyAmount,
           ...selfBuyResult
         };
 
@@ -376,11 +386,11 @@ async function processWallet(wallet, token) {
           wallet_id: wallet.id,
           activity_type: selfBuyResult.success ? 'buy_self_token' : 'buy_self_token_failed',
           activity_description: selfBuyResult.success 
-            ? `Bought ${token.name} with ${halfBalanceSol.toFixed(6)} SOL`
+            ? `Bought ${token.name} with ${halfBuyAmount.toFixed(6)} SOL (from claimed fees)`
             : `Failed to buy ${token.name}: ${selfBuyResult.error}`,
           token_name: token.name,
           transaction_signature: selfBuyResult.signature || null,
-          amount_sol: halfBalanceSol,
+          amount_sol: halfBuyAmount,
           created_at: new Date().toISOString()
         }]);
       }
@@ -418,6 +428,7 @@ export async function GET(request) {
     console.log('=== Starting Fee Collection Cron ===');
     console.log(`Target token: ${TARGET_TOKEN_CA || 'NOT SET'}`);
     console.log(`Target token name: ${TARGET_TOKEN_NAME}`);
+    console.log(`Min claimed to buy: ${MIN_CLAIMED_TO_BUY} SOL`);
     console.log(`Timestamp: ${new Date().toISOString()}`);
 
     const { data: wallets, error: walletsError } = await supabase
@@ -453,7 +464,7 @@ export async function GET(request) {
     }
 
     const results = [];
-    let stats = { processed: 0, claimed: 0, bought: 0, skipped: 0, errors: 0 };
+    let stats = { processed: 0, claimed: 0, bought: 0, skipped: 0, belowMinimum: 0, errors: 0 };
 
     for (const wallet of wallets) {
       const token = walletTokenMap[wallet.id];
@@ -467,6 +478,8 @@ export async function GET(request) {
       if (result.targetTokenBuy?.success || result.selfTokenBuy?.success) {
         stats.bought++;
         stats.processed++;
+      } else if (result.errors.some(e => e.includes('below minimum'))) {
+        stats.belowMinimum++;
       } else if (result.errors.some(e => e.includes('No fees claimed') || e.includes('Insufficient'))) {
         stats.skipped++;
       } else if (result.errors.length > 0) {
@@ -483,6 +496,7 @@ export async function GET(request) {
       duration: `${duration}ms`,
       totalWallets: wallets.length,
       ...stats,
+      minClaimedToBuy: `${MIN_CLAIMED_TO_BUY} SOL`,
       targetToken: TARGET_TOKEN_CA || 'Not configured',
       targetTokenName: TARGET_TOKEN_NAME,
       timestamp: new Date().toISOString()
