@@ -1,9 +1,6 @@
 "use client"
 
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { FaChevronDown, FaCheck, FaSpinner, FaClock } from "react-icons/fa";
-import { IoMdArrowRoundBack } from "react-icons/io";
 import Link from 'next/link';
 
 const PumpTokenCreator = () => {
@@ -29,7 +26,6 @@ const PumpTokenCreator = () => {
   const [currentStep, setCurrentStep] = useState(0);
   const [stepStatuses, setStepStatuses] = useState({});
 
-  // Process steps
   const steps = [
     { id: 'wallet', label: 'Creating Wallet', icon: '🔑' },
     { id: 'funding', label: 'Funding Wallet', icon: '💰' },
@@ -39,10 +35,8 @@ const PumpTokenCreator = () => {
     { id: 'complete', label: 'Processing', icon: '✅' }
   ];
 
-  // Check if we're in development mode
   const isDevelopment = process.env.NODE_ENV === 'development' || (typeof window !== 'undefined' && window.location.hostname === 'localhost');
 
-  // Auto-hide success toast after 8 seconds
   useEffect(() => {
     if (success && !loading) {
       const timer = setTimeout(() => {
@@ -52,96 +46,46 @@ const PumpTokenCreator = () => {
         setCurrentStep(0);
         setStepStatuses({});
       }, 8000);
-      
       return () => clearTimeout(timer);
     }
   }, [success, loading]);
 
-  // Auto-hide rate limit error after some time
   useEffect(() => {
     if (rateLimitError) {
-      const timer = setTimeout(() => {
-        setRateLimitError(null);
-      }, 15000);
-      
+      const timer = setTimeout(() => setRateLimitError(null), 15000);
       return () => clearTimeout(timer);
     }
   }, [rateLimitError]);
 
   const updateStepStatus = (stepId, status, delay = 0) => {
     setTimeout(() => {
-      setStepStatuses(prev => ({
-        ...prev,
-        [stepId]: status
-      }));
+      setStepStatuses(prev => ({ ...prev, [stepId]: status }));
     }, delay);
   };
 
   const simulateProgress = () => {
     setCurrentStep(0);
     updateStepStatus('wallet', 'loading');
-    
-    setTimeout(() => {
-      updateStepStatus('wallet', 'complete');
-      setCurrentStep(1);
-      updateStepStatus('funding', 'loading');
-    }, 1000);
-
-    setTimeout(() => {
-      updateStepStatus('funding', 'complete');
-      setCurrentStep(2);
-      updateStepStatus('metadata', 'loading');
-    }, 3500);
-
-    setTimeout(() => {
-      updateStepStatus('metadata', 'complete');
-      setCurrentStep(3);
-      updateStepStatus('token', 'loading');
-    }, 5000);
-
-    setTimeout(() => {
-      updateStepStatus('token', 'complete');
-      setCurrentStep(4);
-      updateStepStatus('saving', 'loading');
-    }, 5500);
-
-    setTimeout(() => {
-      updateStepStatus('saving', 'complete');
-      setCurrentStep(5);
-      updateStepStatus('complete', 'complete');
-    }, 6000);
+    setTimeout(() => { updateStepStatus('wallet', 'complete'); setCurrentStep(1); updateStepStatus('funding', 'loading'); }, 1000);
+    setTimeout(() => { updateStepStatus('funding', 'complete'); setCurrentStep(2); updateStepStatus('metadata', 'loading'); }, 3500);
+    setTimeout(() => { updateStepStatus('metadata', 'complete'); setCurrentStep(3); updateStepStatus('token', 'loading'); }, 5000);
+    setTimeout(() => { updateStepStatus('token', 'complete'); setCurrentStep(4); updateStepStatus('saving', 'loading'); }, 5500);
+    setTimeout(() => { updateStepStatus('saving', 'complete'); setCurrentStep(5); updateStepStatus('complete', 'complete'); }, 6000);
   };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      setFormData(prev => ({
-        ...prev,
-        image: file
-      }));
-      
+      setFormData(prev => ({ ...prev, image: file }));
       const reader = new FileReader();
       reader.onload = (e) => setPreviewImage(e.target.result);
       reader.readAsDataURL(file);
     }
-  };
-
-  const getRateLimitDisplayInfo = (rateLimitError) => {
-    return {
-      title: 'Rate Limited',
-      message: 'Too many requests from your IP',
-      timeInfo: `Wait ${rateLimitError.remainingMinutes} minutes`,
-      icon: <FaClock />,
-      bgColor: 'bg-red-500'
-    };
   };
 
   const createPumpToken = async () => {
@@ -156,12 +100,9 @@ const PumpTokenCreator = () => {
     setSuccess(false);
     setCurrentStep(0);
     setStepStatuses({});
-
     simulateProgress();
 
     try {
-      console.log('Starting token creation via API...');
-      
       const apiFormData = new FormData();
       apiFormData.append('name', formData.name);
       apiFormData.append('symbol', formData.symbol);
@@ -170,16 +111,9 @@ const PumpTokenCreator = () => {
       apiFormData.append('telegram', formData.telegram);
       apiFormData.append('website', formData.website);
       apiFormData.append('discord', formData.discord);
-      
-      if (formData.image) {
-        apiFormData.append('image', formData.image);
-      }
+      if (formData.image) apiFormData.append('image', formData.image);
 
-      const response = await fetch('/api/tokens/create', {
-        method: 'POST',
-        body: apiFormData
-      });
-
+      const response = await fetch('/api/tokens/create', { method: 'POST', body: apiFormData });
       const result = await response.json();
 
       if (response.status === 429) {
@@ -195,93 +129,21 @@ const PumpTokenCreator = () => {
         return;
       }
 
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || `API Error: ${response.status}`);
-      }
-
-      console.log('Token creation successful:', result);
+      if (!response.ok || !result.success) throw new Error(result.error || `API Error: ${response.status}`);
 
       setTokenData(result.token);
       setWalletData(result.wallet);
       setSuccess(true);
-      
-      setFormData({
-        name: '',
-        symbol: '',
-        description: '',
-        image: null,
-        twitter: '',
-        telegram: '',
-        website: '',
-        discord: ''
-      });
+      setFormData({ name: '', symbol: '', description: '', image: null, twitter: '', telegram: '', website: '', discord: '' });
       setPreviewImage('');
-
     } catch (err) {
-      console.error('Token creation error:', err);
       setError(err.message || 'An error occurred while creating the token');
       setLoading(false);
       setCurrentStep(0);
       setStepStatuses({});
     } finally {
-      setTimeout(() => {
-        setLoading(false);
-      }, 6000);
+      setTimeout(() => setLoading(false), 6000);
     }
-  };
-
-  const testWalletAPI = async () => {
-    try {
-      console.log('Testing PumpPortal wallet API...');
-      const response = await fetch('/api/test-wallet');
-      const result = await response.json();
-      
-      console.log('Test wallet API result:', result);
-      
-      if (result.success) {
-        alert(`API Test Success!\nResponse keys: ${result.debug.keys.join(', ')}\nCheck console for details.`);
-      } else {
-        alert(`API Test Failed: ${result.error}\nCheck console for details.`);
-      }
-    } catch (error) {
-      console.error('Test wallet API error:', error);
-      alert('Test failed - check console for details');
-    }
-  };
-
-  const testToast = async () => {
-    const testTokenData = {
-      signature: 'test123signature',
-      mint: 'test-mint-address',
-      metadataUri: 'https://example.com/metadata.json',
-      tokenName: 'Test Token',
-      tokenSymbol: 'TEST',
-      rawResponse: { test: 'data' }
-    };
-
-    const testWalletData = {
-      publicKey: 'test-wallet-public-key',
-      fundingSignature: 'test-funding-signature'
-    };
-    
-    setTokenData(testTokenData);
-    setWalletData(testWalletData);
-    setLoading(true);
-    simulateProgress();
-    
-    setTimeout(() => {
-      setSuccess(true);
-      setLoading(false);
-    }, 6000);
-  };
-
-  const testRateLimit = () => {
-    setRateLimitError({
-      message: "Rate limit exceeded. You can create another token in 5 minutes.",
-      remainingMinutes: 5,
-      lastCreation: new Date().toISOString(),
-      rateLimitType: 'ip'
-    });
   };
 
   const resetForm = () => {
@@ -294,347 +156,443 @@ const PumpTokenCreator = () => {
     setStepStatuses({});
   };
 
-  const getStepIcon = (step, index) => {
-    const status = stepStatuses[step.id];
-    const isActive = index === currentStep;
-    
-    if (status === 'complete') {
-      return <FaCheck className="text-green-500" />;
-    } else if (status === 'loading' || isActive) {
-      return <FaSpinner className="text-blue-500 animate-spin" />;
-    } else {
-      return <span className="text-gray-400">{step.icon}</span>;
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-[#000] p-4 flex items-center">
-      <div className='absolute bottom-3 -translate-x-1/2 left-1/2 text-gray-500 hidden md:flex justify-center items-center'>
-        powered by <a href="https://pump.fun/board"><img src="pill.png" className='w-12' alt="Pump.fun" /></a>
-      </div>
+    <div style={styles.desktop}>
+      {/* Toast Messages */}
+      {rateLimitError && (
+        <div style={styles.toast}>
+          <div style={styles.toastError}>
+            ⏰ Rate Limited - Wait {rateLimitError.remainingMinutes} minutes
+            <button onClick={() => setRateLimitError(null)} style={styles.toastClose}>×</button>
+          </div>
+        </div>
+      )}
 
-      {/* Rate Limit Error Toast */}
-      <AnimatePresence>
-        {rateLimitError && (
-          <motion.div
-            initial={{ opacity: 0, y: -50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -50 }}
-            transition={{ duration: 0.3 }}
-            className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50"
-          >
-            <div className={`${getRateLimitDisplayInfo(rateLimitError).bgColor} text-white px-6 py-3 rounded-full shadow-lg flex items-center space-x-3 max-w-lg`}>
-              {getRateLimitDisplayInfo(rateLimitError).icon}
-              <div className="flex-1">
-                <span className="font-semibold block text-sm">
-                  {getRateLimitDisplayInfo(rateLimitError).title}
-                </span>
-                <span className="text-xs opacity-90">
-                  {getRateLimitDisplayInfo(rateLimitError).timeInfo}
-                </span>
-              </div>
-              <button
-                onClick={() => setRateLimitError(null)}
-                className="text-white hover:text-gray-200 text-lg font-bold ml-2"
-              >
-                ×
-              </button>
+      {(loading || success) && !rateLimitError && (
+        <div style={styles.toast}>
+          {loading && (
+            <div style={styles.toastLoading}>
+              ⏳ {steps[currentStep]?.label || 'Processing...'}
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Progress and Success Toast */}
-      <AnimatePresence>
-        {(loading || success) && !rateLimitError && (
-          <motion.div
-            initial={{ opacity: 0, y: -50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -50 }}
-            transition={{ duration: 0.3 }}
-            className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50"
-          >
-            <AnimatePresence mode="wait">
-              {loading && (
-                <motion.div
-                  key="loading"
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  transition={{ duration: 0.2 }}
-                  className="bg-green-500 text-white px-6 py-3 rounded-full shadow-lg flex items-center space-x-3"
+          )}
+          {success && tokenData && !loading && (
+            <div style={styles.toastSuccess}>
+              ✅ {tokenData.tokenName} ({tokenData.tokenSymbol}) created!
+              {tokenData.mint && tokenData.mint !== 'Unknown' && (
+                <a
+                  href={isDevelopment ? 'https://pump.fun/board' : `https://pump.fun/${tokenData.mint}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={styles.toastLink}
                 >
-                  <div className="animate-spin rounded-full h-5 w-5 border-2 border-gray-300 border-t-[#67D682]"></div>
-                  <span className="font-semibold">
-                    {steps[currentStep]?.label || 'Processing...'}
-                  </span>
-                </motion.div>
+                  View
+                </a>
               )}
-              
-              {success && tokenData && !loading && (
-                <motion.div
-                  key="success"
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  transition={{ duration: 0.2 }}
-                  className="bg-green-500 text-white px-6 py-3 rounded-full shadow-lg flex items-center space-x-3"
-                >
-                  <FaCheck />
-                  <span className="font-semibold">
-                    {tokenData.tokenName} ({tokenData.tokenSymbol}) created!
-                  </span>
-                  {tokenData.mint && tokenData.mint !== 'Unknown' && (
-                    <a
-                      href={isDevelopment ? 'https://pump.fun/board' : `https://pump.fun/${tokenData.mint}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="bg-white text-green-500 px-3 py-1 rounded-full text-sm font-semibold hover:bg-gray-100 transition-colors"
-                    >
-                      View
-                    </a>
-                  )}
-                  <button
-                    onClick={() => {
-                      setSuccess(false);
-                      setLoading(false);
-                      resetForm();
-                    }}
-                    className="text-white hover:text-gray-200 text-lg font-bold"
-                  >
-                    ×
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              <button onClick={resetForm} style={styles.toastClose}>×</button>
+            </div>
+          )}
+        </div>
+      )}
 
-      <div className="w-full max-w-xl mx-auto">
-        <Link
-          href="/"
-          className="absolute top-[3%] left-[3%] px-4 py-2 text-gray-500"
-        >
-          <IoMdArrowRoundBack size={30} />
-        </Link>
+      <div style={styles.window}>
+        {/* Title Bar */}
+        <div style={styles.titleBar}>
+          <div style={styles.titleLeft}>
+            <span style={styles.titleText}>💰 Create New Token</span>
+          </div>
+          <div style={styles.titleButtons}>
+            <button style={styles.titleBtn}>_</button>
+            <button style={styles.titleBtn}>□</button>
+            <button style={styles.titleBtn}>×</button>
+          </div>
+        </div>
 
-        <div className="bg-[#111] md:border md:border-[#2F3036] rounded-2xl p-8 mt-[7.5%]">
+        {/* Content */}
+        <div style={styles.content}>
+          <Link href="/" style={{ ...styles.button, marginBottom: '16px', display: 'inline-block' }}>
+            ← Back
+          </Link>
+
+          {/* Error Message */}
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 flex items-start">
-              <span className="text-red-600 font-semibold mr-2">!</span>
-              <div className="flex-1">
-                <span className="text-red-700 block">{error}</span>
-                <div className="mt-2">
-                  <button 
-                    onClick={() => console.log('Current form data:', formData)}
-                    className="text-red-600 underline text-sm"
-                  >
-                    Log form data to console
-                  </button>
-                </div>
-              </div>
+            <div style={styles.errorBox}>
+              ⚠️ {error}
             </div>
           )}
 
-          <div className="space-y-4">
-            {/* Image and Name/Ticker split layout */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Image section - left half */}
-              <div>
-                <label className="block text-gray-400 font-semibold mb-2">Image*</label>
-                <div className="relative">
+          {/* Form */}
+          <div style={styles.section}>
+            <div style={styles.sectionHeader}>📝 Token Details</div>
+            <div style={styles.sectionBody}>
+              <div style={styles.formGrid}>
+                {/* Image Upload */}
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Image *</label>
                   <input
                     type="file"
                     accept="image/*"
                     onChange={handleImageChange}
-                    className="hidden"
                     id="image-upload"
+                    style={{ display: 'none' }}
                   />
-                  <label
-                    htmlFor="image-upload"
-                    className="flex flex-col items-center justify-center w-full h-37 border-2 border-dashed border-[#2F3036] rounded-lg cursor-pointer hover:border-blue-400 transition-colors bg-[#24252B]"
-                  >
+                  <label htmlFor="image-upload" style={styles.imageUpload}>
                     {previewImage ? (
-                      <img src={previewImage} alt="Preview" className="w-20 h-20 object-cover rounded-lg" />
+                      <img src={previewImage} alt="Preview" style={styles.previewImg} />
                     ) : (
-                      <>
-                        <div className="w-8 h-8 border border-[#2F3036] rounded mb-2 md:mb-0 flex items-center justify-center text-white text-sm">+</div>
-                        <span className="text-gray-500">Click to upload</span>
-                      </>
+                      <span>📁 Click to upload</span>
                     )}
                   </label>
                 </div>
-              </div>
 
-              {/* Name and Ticker stacked - right half */}
-              <div className="space-y-4">
+                {/* Name & Symbol */}
                 <div>
-                  <label className="block text-gray-400 font-semibold mb-2">Name*</label>
-                  <input
-                    type="text"
-                    name="name"
-                    value={formData.name}
-                    onChange={handleInputChange}
-                    placeholder="Meme"
-                    required
-                    className="w-full bg-[#24252B] border border-[#2F3036] rounded-lg px-4 py-3 text-gray-500 placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-gray-400 font-semibold mb-2">Ticker*</label>
-                  <input
-                    type="text"
-                    name="symbol"
-                    value={formData.symbol}
-                    onChange={handleInputChange}
-                    placeholder="MEME"
-                    required
-                    maxLength="10"
-                    className="w-full bg-[#24252B] border border-[#2F3036] rounded-lg px-4 py-3 text-gray-500 placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                  />
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Name *</label>
+                    <input
+                      type="text"
+                      name="name"
+                      value={formData.name}
+                      onChange={handleInputChange}
+                      placeholder="Meme"
+                      style={styles.input}
+                    />
+                  </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Ticker *</label>
+                    <input
+                      type="text"
+                      name="symbol"
+                      value={formData.symbol}
+                      onChange={handleInputChange}
+                      placeholder="MEME"
+                      maxLength="10"
+                      style={styles.input}
+                    />
+                  </div>
                 </div>
               </div>
+
+              {/* Description */}
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Description</label>
+                <textarea
+                  name="description"
+                  value={formData.description}
+                  onChange={handleInputChange}
+                  placeholder="The best token ever"
+                  rows={3}
+                  maxLength="500"
+                  style={styles.textarea}
+                />
+                <div style={styles.charCount}>{formData.description.length}/500</div>
+              </div>
             </div>
+          </div>
 
-            <div>
-              <label className="block text-gray-400 font-semibold mb-2">Description</label>
-              <textarea
-                name="description"
-                value={formData.description}
-                onChange={handleInputChange}
-                placeholder="The best token ever"
-                rows={2}
-                maxLength="500"
-                className="w-full bg-[#24252B] border border-[#2F3036] rounded-lg px-4 py-3 text-gray-500 placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 resize-none"
-              />
-              <p className="text-xs text-gray-500 mt-1">{formData.description.length}/500 characters</p>
-            </div>
-
-            {/* Social Links Section */}
-            <div>
-              <button
-                type="button"
-                onClick={() => setShowLinks(!showLinks)}
-                className="flex items-center justify-between w-full py-1 text-gray-400 font-semibold"
-              >
-                <span>Social Links (Optional)</span>
-                <motion.div
-                  animate={{ rotate: showLinks ? 180 : 0 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <FaChevronDown />
-                </motion.div>
-              </button>
-              
-              <AnimatePresence>
-                {showLinks && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: "auto", opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.3, ease: "easeInOut" }}
-                    className="overflow-hidden"
-                  >
-                    <div className="py-2 mt-2 space-y-4">
-                      {/* Twitter and Telegram row */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-gray-400 font-medium mb-2">X / Twitter</label>
-                          <input
-                            type="url"
-                            name="twitter"
-                            value={formData.twitter}
-                            onChange={handleInputChange}
-                            placeholder="https://x.com/yourtoken"
-                            className="w-full bg-[#24252B] border border-[#2F3036] rounded-lg px-3 py-2 text-gray-400 placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-gray-400 font-medium mb-2">Telegram</label>
-                          <input
-                            type="url"
-                            name="telegram"
-                            value={formData.telegram}
-                            onChange={handleInputChange}
-                            placeholder="https://t.me/yourtoken"
-                            className="w-full bg-[#24252B] border border-[#2F3036] rounded-lg px-3 py-2 text-gray-400 placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-gray-400 font-medium mb-2">Website</label>
-                          <input
-                            type="url"
-                            name="website"
-                            value={formData.website}
-                            onChange={handleInputChange}
-                            placeholder="https://yourtoken.com"
-                            className="w-full bg-[#24252B] border border-[#2F3036] rounded-lg px-3 py-2 text-gray-400 placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                          />
-                        </div>
-                      </div>
-
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-
-            <button
-              type="button"
-              onClick={createPumpToken}
-              disabled={loading || !formData.name || !formData.symbol || rateLimitError}
-              className="w-full bg-[#67D682] text-white py-4 px-6 rounded-lg font-bold text-lg transform hover:scale-[101%] transition-all duration-200 disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center cursor-pointer"
+          {/* Social Links */}
+          <div style={styles.section}>
+            <div
+              style={{ ...styles.sectionHeader, cursor: 'pointer' }}
+              onClick={() => setShowLinks(!showLinks)}
             >
-              {loading ? (
-                <>
-                  <div className="animate-spin rounded-full h-5 w-5 mr-2 border-2 border-gray-300 border-t-[#67D682]"></div>
-                  Creating...
-                </>
-              ) : rateLimitError ? (
-                <>
-                  <FaClock className="mr-2" />
-                  Rate Limited ({rateLimitError.remainingMinutes}m)
-                </>
-              ) : (
-                'Create Token'
-              )}
-            </button>
-
-            {/* Test buttons for development */}
-            {isDevelopment && (
-              <div className="space-y-2">
-                <button
-                  type="button"
-                  onClick={testToast}
-                  className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
-                >
-                  Test Progress Toast (Dev Only)
-                </button>
-                <button
-                  type="button"
-                  onClick={testRateLimit}
-                  className="w-full bg-red-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-red-700 transition-colors"
-                >
-                  Test Rate Limit Error (Dev Only)
-                </button>
-                <button
-                  type="button"
-                  onClick={testWalletAPI}
-                  className="w-full bg-purple-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-purple-700 transition-colors"
-                >
-                  Test PumpPortal Wallet API (Dev Only)
-                </button>
+              🔗 Social Links (Optional) {showLinks ? '▲' : '▼'}
+            </div>
+            {showLinks && (
+              <div style={styles.sectionBody}>
+                <div style={styles.linksGrid}>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>𝕏 / Twitter</label>
+                    <input
+                      type="url"
+                      name="twitter"
+                      value={formData.twitter}
+                      onChange={handleInputChange}
+                      placeholder="https://x.com/yourtoken"
+                      style={styles.input}
+                    />
+                  </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Telegram</label>
+                    <input
+                      type="url"
+                      name="telegram"
+                      value={formData.telegram}
+                      onChange={handleInputChange}
+                      placeholder="https://t.me/yourtoken"
+                      style={styles.input}
+                    />
+                  </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Website</label>
+                    <input
+                      type="url"
+                      name="website"
+                      value={formData.website}
+                      onChange={handleInputChange}
+                      placeholder="https://yourtoken.com"
+                      style={styles.input}
+                    />
+                  </div>
+                </div>
               </div>
             )}
           </div>
+
+          {/* Submit Button */}
+          <button
+            onClick={createPumpToken}
+            disabled={loading || !formData.name || !formData.symbol || rateLimitError}
+            style={{
+              ...styles.submitButton,
+              opacity: (loading || !formData.name || !formData.symbol || rateLimitError) ? 0.6 : 1,
+              cursor: (loading || !formData.name || !formData.symbol || rateLimitError) ? 'not-allowed' : 'pointer'
+            }}
+          >
+            {loading ? '⏳ Creating...' : rateLimitError ? `⏰ Rate Limited (${rateLimitError.remainingMinutes}m)` : '🚀 Create Token'}
+          </button>
+        </div>
+
+        {/* Status Bar */}
+        <div style={styles.statusBar}>
+          <span>{loading ? 'Processing...' : 'Ready'}</span>
         </div>
       </div>
     </div>
   );
+};
+
+const styles = {
+  desktop: {
+    minHeight: '100vh',
+    backgroundColor: '#008080',
+    padding: '16px',
+    fontFamily: '"MS Sans Serif", Tahoma, sans-serif',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  window: {
+    width: '100%',
+    maxWidth: '500px',
+    backgroundColor: '#c0c0c0',
+    border: '2px solid',
+    borderColor: '#fff #808080 #808080 #fff',
+    boxShadow: '2px 2px 0 #000',
+  },
+  titleBar: {
+    background: 'linear-gradient(90deg, #000080, #1084d0)',
+    padding: '3px 4px',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  titleLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+  },
+  titleText: {
+    color: '#fff',
+    fontSize: '12px',
+    fontWeight: 'bold',
+  },
+  titleButtons: {
+    display: 'flex',
+    gap: '2px',
+  },
+  titleBtn: {
+    width: '16px',
+    height: '14px',
+    backgroundColor: '#c0c0c0',
+    border: '2px solid',
+    borderColor: '#fff #808080 #808080 #fff',
+    fontSize: '10px',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    padding: 0,
+    lineHeight: 1,
+  },
+  content: {
+    padding: '16px',
+    backgroundColor: '#c0c0c0',
+  },
+  section: {
+    marginBottom: '16px',
+    border: '2px solid',
+    borderColor: '#fff #808080 #808080 #fff',
+  },
+  sectionHeader: {
+    background: 'linear-gradient(90deg, #000080, #1084d0)',
+    color: '#fff',
+    padding: '4px 8px',
+    fontSize: '12px',
+    fontWeight: 'bold',
+  },
+  sectionBody: {
+    padding: '12px',
+    backgroundColor: '#c0c0c0',
+  },
+  formGrid: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: '12px',
+    marginBottom: '12px',
+  },
+  linksGrid: {
+    display: 'grid',
+    gridTemplateColumns: '1fr',
+    gap: '8px',
+  },
+  formGroup: {
+    marginBottom: '8px',
+  },
+  label: {
+    display: 'block',
+    fontSize: '11px',
+    fontWeight: 'bold',
+    marginBottom: '4px',
+  },
+  input: {
+    width: '100%',
+    padding: '6px 8px',
+    fontSize: '12px',
+    border: '2px solid',
+    borderColor: '#808080 #fff #fff #808080',
+    backgroundColor: '#fff',
+    fontFamily: 'inherit',
+    boxSizing: 'border-box',
+  },
+  textarea: {
+    width: '100%',
+    padding: '6px 8px',
+    fontSize: '12px',
+    border: '2px solid',
+    borderColor: '#808080 #fff #fff #808080',
+    backgroundColor: '#fff',
+    fontFamily: 'inherit',
+    resize: 'none',
+    boxSizing: 'border-box',
+  },
+  charCount: {
+    fontSize: '10px',
+    color: '#808080',
+    textAlign: 'right',
+  },
+  imageUpload: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    height: '100px',
+    border: '2px solid',
+    borderColor: '#808080 #fff #fff #808080',
+    backgroundColor: '#fff',
+    cursor: 'pointer',
+    fontSize: '11px',
+    color: '#808080',
+  },
+  previewImg: {
+    width: '80px',
+    height: '80px',
+    objectFit: 'cover',
+  },
+  button: {
+    backgroundColor: '#c0c0c0',
+    border: '2px solid',
+    borderColor: '#fff #808080 #808080 #fff',
+    padding: '6px 12px',
+    fontSize: '11px',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    textDecoration: 'none',
+    color: '#000',
+  },
+  submitButton: {
+    width: '100%',
+    backgroundColor: '#c0c0c0',
+    border: '2px solid',
+    borderColor: '#fff #808080 #808080 #fff',
+    padding: '12px 16px',
+    fontSize: '14px',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    marginBottom: '12px',
+  },
+  errorBox: {
+    backgroundColor: '#fff',
+    border: '2px solid #ff0000',
+    padding: '8px',
+    marginBottom: '16px',
+    fontSize: '12px',
+    color: '#ff0000',
+  },
+  toast: {
+    position: 'fixed',
+    top: '16px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    zIndex: 1000,
+  },
+  toastLoading: {
+    backgroundColor: '#c0c0c0',
+    border: '2px solid',
+    borderColor: '#fff #808080 #808080 #fff',
+    padding: '8px 16px',
+    fontSize: '12px',
+    fontWeight: 'bold',
+    boxShadow: '2px 2px 0 #000',
+  },
+  toastSuccess: {
+    backgroundColor: '#c0c0c0',
+    border: '2px solid',
+    borderColor: '#fff #808080 #808080 #fff',
+    padding: '8px 16px',
+    fontSize: '12px',
+    fontWeight: 'bold',
+    boxShadow: '2px 2px 0 #000',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  toastError: {
+    backgroundColor: '#c0c0c0',
+    border: '2px solid #ff0000',
+    padding: '8px 16px',
+    fontSize: '12px',
+    fontWeight: 'bold',
+    boxShadow: '2px 2px 0 #000',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  toastLink: {
+    backgroundColor: '#000080',
+    color: '#fff',
+    padding: '2px 8px',
+    fontSize: '11px',
+    textDecoration: 'none',
+    border: '2px solid',
+    borderColor: '#fff #808080 #808080 #fff',
+  },
+  toastClose: {
+    backgroundColor: 'transparent',
+    border: 'none',
+    fontSize: '16px',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    marginLeft: '8px',
+  },
+  poweredBy: {
+    textAlign: 'center',
+    fontSize: '11px',
+    color: '#808080',
+  },
+  statusBar: {
+    backgroundColor: '#c0c0c0',
+    borderTop: '2px solid #fff',
+    padding: '2px 8px',
+    fontSize: '11px',
+  },
 };
 
 export default PumpTokenCreator;

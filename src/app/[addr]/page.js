@@ -1,10 +1,6 @@
-// token/[addr]/page.js
 'use client';
 
 import { useState, useEffect } from 'react';
-import { IoMdArrowRoundBack, IoMdCopy } from "react-icons/io";
-import { FiExternalLink, FiTwitter, FiGlobe } from "react-icons/fi";
-import { FaTelegram } from "react-icons/fa";
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 
@@ -26,11 +22,7 @@ export default function Token() {
       setLoading(true);
       const response = await fetch(`/api/tokens/${params.addr}`);
       const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to fetch token');
-      }
-
+      if (!response.ok) throw new Error(data.error || 'Failed to fetch token');
       setToken(data.token);
     } catch (err) {
       setError(err.message);
@@ -49,51 +41,39 @@ export default function Token() {
     }
   };
 
-  const truncateAddress = (address, start = 8, end = 8) => {
-    if (!address) return '';
-    if (address.length <= start + end) return address;
-    return `${address.slice(0, start)}...${address.slice(-end)}`;
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleString();
-  };
-
-  const getStatusColor = (status) => {
-    switch (status?.toLowerCase()) {
-      case 'active':
-        return 'text-green-400 bg-green-400/10';
-      case 'pending':
-        return 'text-yellow-400 bg-yellow-400/10';
-      case 'inactive':
-        return 'text-red-400 bg-red-400/10';
-      default:
-        return 'text-gray-400 bg-gray-400/10';
-    }
-  };
-
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#000] flex items-center justify-center">
-        <div className="animate-spin rounded-full size-8 border-2 border-gray-300 border-t-[#67D682]"></div>
+      <div style={styles.desktop}>
+        <div style={styles.window}>
+          <div style={styles.titleBar}>
+            <span style={styles.titleText}>Loading...</span>
+            <div style={styles.titleButtons}>
+              <button style={styles.titleBtn}>×</button>
+            </div>
+          </div>
+          <div style={{ ...styles.content, textAlign: 'center', padding: '48px' }}>
+            <div style={{ fontSize: '32px', marginBottom: '16px' }}>⏳</div>
+            <div>Loading token data...</div>
+          </div>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-[#000]">
-        <Link
-          href="/"
-          className="absolute top-[3%] left-[3%] px-4 py-2 text-gray-500"
-        >
-          <IoMdArrowRoundBack size={30} />
-        </Link>
-        <div className="flex items-center justify-center min-h-screen">
-          <div className="text-center">
-            <h1 className="text-2xl font-bold text-red-400 mb-4">Error</h1>
-            <p className="text-gray-400">{error}</p>
+      <div style={styles.desktop}>
+        <div style={styles.window}>
+          <div style={styles.titleBar}>
+            <span style={styles.titleText}>Error</span>
+            <div style={styles.titleButtons}>
+              <button style={styles.titleBtn}>×</button>
+            </div>
+          </div>
+          <div style={{ ...styles.content, textAlign: 'center', padding: '48px' }}>
+            <div style={{ fontSize: '32px', marginBottom: '16px' }}>❌</div>
+            <div style={{ color: '#ff0000', marginBottom: '16px' }}>{error}</div>
+            <Link href="/" style={styles.button}>← Back to Home</Link>
           </div>
         </div>
       </div>
@@ -102,17 +82,18 @@ export default function Token() {
 
   if (!token) {
     return (
-      <div className="min-h-screen bg-[#15161B]">
-        <Link
-          href="/"
-          className="absolute top-[3%] left-[3%] px-4 py-2 text-gray-500"
-        >
-          <IoMdArrowRoundBack size={30} />
-        </Link>
-        <div className="flex items-center justify-center min-h-screen">
-          <div className="text-center">
-            <h1 className="text-2xl font-bold text-gray-400 mb-4">Token Not Found</h1>
-            <p className="text-gray-500">The requested token could not be found.</p>
+      <div style={styles.desktop}>
+        <div style={styles.window}>
+          <div style={styles.titleBar}>
+            <span style={styles.titleText}>Not Found</span>
+            <div style={styles.titleButtons}>
+              <button style={styles.titleBtn}>×</button>
+            </div>
+          </div>
+          <div style={{ ...styles.content, textAlign: 'center', padding: '48px' }}>
+            <div style={{ fontSize: '32px', marginBottom: '16px' }}>📂</div>
+            <div style={{ marginBottom: '16px' }}>Token not found</div>
+            <Link href="/" style={styles.button}>← Back to Home</Link>
           </div>
         </div>
       </div>
@@ -120,161 +101,331 @@ export default function Token() {
   }
 
   return (
-    <div className="min-h-screen bg-[#15161B] text-white flex items-start">
-      {/* Header */}
-      <Link
-        href="/"
-        className="absolute top-[3%] left-[3%] px-4 py-2 text-gray-500 rounded-lg"
-      >
-        <IoMdArrowRoundBack size={30} />
-      </Link>
-
-      {/* Main Content */}
-      <div className="max-w-4xl mx-auto px-6 pb-12 mt-[15%] md:mt-[10%] w-full">
-        {/* Token Header - Centered */}
-        <div className="flex flex-col items-center text-center mb-8">
-          {token.image_uri && (
-            <div className="mb-6">
-              <img
-                src={token.image_uri}
-                alt={token.name}
-                className="w-32 h-32 rounded-full object-cover"
-                onError={(e) => {
-                  e.target.src = '/placeholder-token.png';
-                }}
-              />
-            </div>
-          )}
-          <div>
-            <h1 className="text-4xl font-bold mb-2">{token.name}</h1>
-            <p className="text-2xl text-gray-400 mb-4">${token.symbol}</p>
-            {token.description && (
-              <p className="text-gray-300 leading-relaxed max-w-2xl mx-auto line-clamp-2 md:line-clamp-4">{token.description}</p>
-            )}
+    <div style={styles.desktop}>
+      <div style={styles.window}>
+        {/* Title Bar */}
+        <div style={styles.titleBar}>
+          <div style={styles.titleLeft}>
+            <span style={styles.titleText}>{token.name} ({token.symbol})</span>
+          </div>
+          <div style={styles.titleButtons}>
+            <button style={styles.titleBtn}>_</button>
+            <button style={styles.titleBtn}>□</button>
+            <button style={styles.titleBtn}>×</button>
           </div>
         </div>
-        
-        {/* Centered Container for all buttons/links */}
-        <div className="flex flex-col items-center">
-          <div className="space-y-2 w-[60dvw] md:w-[30dvw] max-w-md">
 
-            <div className="bg-black rounded-lg p-3">
-              <div className="flex items-center gap-2 relative">
-                  <div className="flex-1 text-md md:text-xl text-gray-400 px-3 py-2 rounded text-center break-all">
-                      {token.mint_address.slice(0, 4)}...{token.mint_address.slice(-4)}
-                  </div>
-                  <button
-                      onClick={() => copyToClipboard(token.mint_address, 'mint')}
-                      className="p-2 text-gray-400 hover:text-white transition-colors cursor-pointer absolute right-2 md:right-5"
-                      title="Copy mint address"
-                  >
-                  {copiedField === 'mint' ? (
-                      <svg className="size-[20px] text-green-400" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                      </svg>
-                  ) : (
-                      <svg className="size-[20px] text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                      </svg>
+        {/* Content */}
+        <div style={styles.content}>
+          {/* Back Button */}
+          <Link href="/" style={{ ...styles.button, marginBottom: '16px', display: 'inline-block' }}>
+            ← Back
+          </Link>
+
+          {/* Token Info Section */}
+          <div style={styles.section}>
+            <div style={styles.sectionHeader}>📋 Token Information</div>
+            <div style={styles.sectionBody}>
+              <div style={styles.tokenHeader}>
+                {token.image_uri && (
+                  <img
+                    src={token.image_uri}
+                    alt={token.name}
+                    style={styles.tokenImage}
+                    onError={(e) => { e.target.style.display = 'none'; }}
+                  />
+                )}
+                <div style={styles.tokenInfo}>
+                  <div style={styles.tokenName}>{token.name}</div>
+                  <div style={styles.tokenSymbol}>${token.symbol}</div>
+                  {token.description && (
+                    <div style={styles.tokenDesc}>{token.description}</div>
                   )}
-                  </button>
+                </div>
               </div>
             </div>
+          </div>
 
-            {/* Social Links */}
-            {(token.website_url || token.twitter_url || token.telegram_url) && (
-                <div className="flex justify-center gap-2">
+          {/* Mint Address Section */}
+          <div style={styles.section}>
+            <div style={styles.sectionHeader}>🔑 Mint Address</div>
+            <div style={styles.sectionBody}>
+              <div style={styles.addressRow}>
+                <div style={styles.addressBox}>
+                  {token.mint_address.slice(0, 8)}...{token.mint_address.slice(-8)}
+                </div>
+                <button
+                  onClick={() => copyToClipboard(token.mint_address, 'mint')}
+                  style={styles.button}
+                >
+                  {copiedField === 'mint' ? '✓ Copied' : '📋 Copy'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Fee Account Section */}
+          {token.fee_account && (
+            <div style={styles.section}>
+              <div style={styles.sectionHeader}>💰 Rewards To</div>
+              <div style={styles.sectionBody}>
+                <a
+                  href={`https://x.com/${token.fee_account}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={styles.linkButton}
+                >
+                  {token.fee_account} 𝕏
+                </a>
+              </div>
+            </div>
+          )}
+
+          {/* Social Links Section */}
+          {(token.website_url || token.twitter_url || token.telegram_url) && (
+            <div style={styles.section}>
+              <div style={styles.sectionHeader}>🔗 Links</div>
+              <div style={styles.sectionBody}>
+                <div style={styles.linksRow}>
                   {token.website_url && (
-                    <a
-                      href={token.website_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={`flex items-center px-4 py-3 bg-black rounded-lg relative ${
-                        (token.website_url && token.twitter_url) ? 'gap-2 w-1/2' : 'gap-2 w-full justify-center'
-                      }`}
-                    >
-                      <FiGlobe className="text-gray-300" />
-                      <span className="text-white">site</span>
-                      <FiExternalLink size={14} className="text-gray-400 absolute right-5" />
+                    <a href={token.website_url} target="_blank" rel="noopener noreferrer" style={styles.button}>
+                      🌐 Website
                     </a>
                   )}
-                  
                   {token.twitter_url && (
-                    <a
-                      href={token.twitter_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={`flex items-center px-4 py-3 bg-black rounded-lg relative ${
-                        (token.website_url && token.twitter_url) ? 'gap-2 w-1/2' : 'gap-2 w-full justify-center'
-                      }`}
-                    >
-                      <span className="text-white text-lg">𝕏</span>
-                      <FiExternalLink size={14} className="text-gray-400 absolute right-5" />
+                    <a href={token.twitter_url} target="_blank" rel="noopener noreferrer" style={styles.button}>
+                      𝕏 Twitter
+                    </a>
+                  )}
+                  {token.telegram_url && (
+                    <a href={token.telegram_url} target="_blank" rel="noopener noreferrer" style={styles.button}>
+                      📱 Telegram
                     </a>
                   )}
                 </div>
-            )}
+              </div>
+            </div>
+          )}
 
-            <Link href={`https://x.com/${token.fee_account}`}>
-              {token.fee_account && (
-                  <div className="bg-black rounded-lg p-3 relative">
-                      <div className="absolute top-2 left-2 text-xs md:text-sm text-gray-400">Rewards to</div>
-                      <div className="flex items-center gap-2">
-                          <code className="flex-1 text-sm text-white px-3 py-1 rounded text-center flex justify-center items-center gap-2">
-                              {token.fee_account}
-                              <div className='text-3xl'>
-                                  𝕏
-                              </div>
-                          </code>
-                      </div>
-                  </div>
-              )}
-            </Link>
-
-            <div className='w-full border-b-2 py-1 border-gray-700'></div>
-
-            <Link href={`https://pump.fun/coin/${token.mint_address}`} className="block">
-                  <div className="bg-black rounded-lg p-2">
-                      <div className="flex items-center gap-2">
-                          <code className="flex-1 text-sm text-gray-300 px-3 py-2 rounded text-center">
-                              <div className="flex justify-center items-center gap-2">
-                                  <img src="pill.png" className='size-8' />
-                                  View on pump
-                              </div>
-                          </code>
-                      </div>
-                  </div>
-            </Link>
-
-            <Link href="https://jup.ag/" className="block">
-                  <div className="bg-black rounded-lg p-2">
-                      <div className="flex items-center gap-2">
-                          <code className="flex-1 text-sm text-gray-300 px-3 py-2 rounded text-center">
-                              <div className="flex justify-center items-center gap-2">
-                                  <img src="logo.png" className='size-7' />
-                                  Buy on Jupiter
-                              </div>
-                          </code>
-                      </div>
-                  </div>
-            </Link>
-
-            <Link href={`https://axiom.trade/t/${token.mint_address}`} className="block">
-                  <div className="bg-black rounded-lg p-2">
-                      <div className="flex items-center gap-2">
-                          <code className="flex-1 text-sm text-gray-300 px-3 py-2 rounded text-center">
-                              <div className="flex justify-center items-center gap-2">
-                                  <img src="axiom.png" className='size-7 rounded-full' />
-                                  Buy on Axiom
-                              </div>
-                          </code>
-                      </div>
-                  </div>
-            </Link>
-
+          {/* Trade Links Section */}
+          <div style={styles.section}>
+            <div style={styles.sectionHeader}>📈 Trade</div>
+            <div style={styles.sectionBody}>
+              <div style={styles.tradeLinks}>
+                <a
+                  href={`https://pump.fun/coin/${token.mint_address}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={styles.tradeButton}
+                >
+                  <img src="/pill.png" style={styles.tradeIcon} />
+                  View on Pump
+                </a>
+                <a
+                  href="https://jup.ag/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={styles.tradeButton}
+                >
+                  <img src="/logo.png" style={styles.tradeIcon} />
+                  Buy on Jupiter
+                </a>
+                <a
+                  href={`https://axiom.trade/t/${token.mint_address}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={styles.tradeButton}
+                >
+                  <img src="/axiom.png" style={{ ...styles.tradeIcon, borderRadius: '50%' }} />
+                  Buy on Axiom
+                </a>
+              </div>
+            </div>
           </div>
+        </div>
+
+        {/* Status Bar */}
+        <div style={styles.statusBar}>
+          <span>Ready</span>
         </div>
       </div>
     </div>
   );
 }
+
+const styles = {
+  desktop: {
+    minHeight: '100vh',
+    backgroundColor: '#008080',
+    padding: '16px',
+    fontFamily: '"MS Sans Serif", Tahoma, sans-serif',
+  },
+  window: {
+    maxWidth: '600px',
+    margin: '0 auto',
+    backgroundColor: '#c0c0c0',
+    border: '2px solid',
+    borderColor: '#fff #808080 #808080 #fff',
+    boxShadow: '2px 2px 0 #000',
+  },
+  titleBar: {
+    background: 'linear-gradient(90deg, #000080, #1084d0)',
+    padding: '3px 4px',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  titleLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+  },
+  titleText: {
+    color: '#fff',
+    fontSize: '12px',
+    fontWeight: 'bold',
+  },
+  titleButtons: {
+    display: 'flex',
+    gap: '2px',
+  },
+  titleBtn: {
+    width: '16px',
+    height: '14px',
+    backgroundColor: '#c0c0c0',
+    border: '2px solid',
+    borderColor: '#fff #808080 #808080 #fff',
+    fontSize: '10px',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    padding: 0,
+    lineHeight: 1,
+  },
+  content: {
+    padding: '16px',
+    backgroundColor: '#c0c0c0',
+  },
+  section: {
+    marginBottom: '16px',
+    border: '2px solid',
+    borderColor: '#fff #808080 #808080 #fff',
+  },
+  sectionHeader: {
+    background: 'linear-gradient(90deg, #000080, #1084d0)',
+    color: '#fff',
+    padding: '4px 8px',
+    fontSize: '12px',
+    fontWeight: 'bold',
+  },
+  sectionBody: {
+    padding: '12px',
+    backgroundColor: '#fff',
+    border: '2px solid',
+    borderColor: '#808080 #fff #fff #808080',
+    margin: '4px',
+  },
+  tokenHeader: {
+    display: 'flex',
+    gap: '16px',
+    alignItems: 'flex-start',
+  },
+  tokenImage: {
+    width: '80px',
+    height: '80px',
+    objectFit: 'cover',
+    border: '2px solid',
+    borderColor: '#808080 #fff #fff #808080',
+    flexShrink: 0,
+  },
+  tokenInfo: {
+    flex: 1,
+  },
+  tokenName: {
+    fontSize: '18px',
+    fontWeight: 'bold',
+    color: '#000080',
+    marginBottom: '4px',
+  },
+  tokenSymbol: {
+    fontSize: '14px',
+    color: '#808080',
+    marginBottom: '8px',
+  },
+  tokenDesc: {
+    fontSize: '11px',
+    color: '#000',
+    lineHeight: 1.4,
+  },
+  addressRow: {
+    display: 'flex',
+    gap: '8px',
+    alignItems: 'center',
+  },
+  addressBox: {
+    flex: 1,
+    padding: '8px',
+    backgroundColor: '#fff',
+    border: '2px solid',
+    borderColor: '#808080 #fff #fff #808080',
+    fontSize: '11px',
+    fontFamily: 'monospace',
+  },
+  button: {
+    backgroundColor: '#c0c0c0',
+    border: '2px solid',
+    borderColor: '#fff #808080 #808080 #fff',
+    padding: '6px 12px',
+    fontSize: '11px',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    textDecoration: 'none',
+    color: '#000',
+    display: 'inline-block',
+  },
+  linkButton: {
+    backgroundColor: '#c0c0c0',
+    border: '2px solid',
+    borderColor: '#fff #808080 #808080 #fff',
+    padding: '8px 16px',
+    fontSize: '12px',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    textDecoration: 'none',
+    color: '#000',
+    display: 'inline-block',
+  },
+  linksRow: {
+    display: 'flex',
+    gap: '8px',
+    flexWrap: 'wrap',
+  },
+  tradeLinks: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+  },
+  tradeButton: {
+    backgroundColor: '#c0c0c0',
+    border: '2px solid',
+    borderColor: '#fff #808080 #808080 #fff',
+    padding: '10px 16px',
+    fontSize: '12px',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    textDecoration: 'none',
+    color: '#000',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  tradeIcon: {
+    width: '20px',
+    height: '20px',
+  },
+  statusBar: {
+    backgroundColor: '#c0c0c0',
+    borderTop: '2px solid #fff',
+    padding: '2px 8px',
+    fontSize: '11px',
+  },
+};

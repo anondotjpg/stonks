@@ -1,12 +1,20 @@
-"use client"
+"use client";
 
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import Image from "next/image";
+
+/**
+ * Windows 95 style component - Recent Buys
+ * Includes a real-time ticking clock and live "time ago" updates.
+ */
 
 const RecentBuys = () => {
   const [buys, setBuys] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isMinimized, setIsMinimized] = useState(false);
+  
+  // State for the ticking clock
+  const [currentTime, setCurrentTime] = useState(new Date());
 
   // Fetch recent buy activities
   const fetchRecentBuys = async () => {
@@ -22,73 +30,67 @@ const RecentBuys = () => {
     }
   };
 
+  // Effect 1: API Polling (Every 30 seconds)
   useEffect(() => {
     fetchRecentBuys();
-    // Refresh every 30 seconds
     const interval = setInterval(fetchRecentBuys, 30000);
     return () => clearInterval(interval);
   }, []);
 
-  // Format time ago
+  // Effect 2: Clock Heartbeat (Every 1 second)
+  useEffect(() => {
+    const clockInterval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    return () => clearInterval(clockInterval);
+  }, []);
+
+  // Format time ago relative to the ticking currentTime state
   const timeAgo = (dateString) => {
-    const seconds = Math.floor((new Date() - new Date(dateString)) / 1000);
-    if (seconds < 60) return `${seconds}s`;
+    const seconds = Math.floor((currentTime - new Date(dateString)) / 1000);
+    if (seconds < 0) return `0s ago`; // Handle slight clock desync
+    if (seconds < 60) return `${seconds}s ago`;
     const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes}m`;
+    if (minutes < 60) return `${minutes}m ago`;
     const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h`;
-    return `${Math.floor(hours / 24)}d`;
+    if (hours < 24) return `${hours}h ago`;
+    return `${Math.floor(hours / 24)}d ago`;
   };
 
-  // Format SOL amount
   const formatSol = (amount) => {
-    if (!amount) return '0';
+    if (!amount) return '0.0000';
     return parseFloat(amount).toFixed(4);
   };
 
-  // Get activity icon based on type
   const getActivityIcon = (type) => {
     if (type?.includes('target')) {
       return (
-        <div className="w-9 h-9 rounded-full bg-blue-500/10 flex items-center justify-center">
-            <Image
-                src="/print.png"
-                alt="Print"
-                width={24}
-                height={24}
-                className="object-contain"
-            />
+        <div style={styles.icon95}>
+          <Image src="/print.png" alt="Print" width={16} height={16} style={{ imageRendering: 'pixelated' }} />
         </div>
       );
     }
     if (type?.includes('self')) {
       return (
-        <div className="w-9 h-9 rounded-full bg-purple-500/10 flex items-center justify-center">
-          <svg className="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
+        <div style={{ ...styles.icon95, backgroundColor: '#800080' }}>
+          <span style={{ fontSize: '10px' }}>↻</span>
         </div>
       );
     }
     if (type?.includes('combined')) {
       return (
-        <div className="w-9 h-9 rounded-full bg-yellow-500/10 flex items-center justify-center">
-          <svg className="w-4 h-4 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
+        <div style={{ ...styles.icon95, backgroundColor: '#808000' }}>
+          <span style={{ fontSize: '10px' }}>⚡</span>
         </div>
       );
     }
     return (
-      <div className="w-9 h-9 rounded-full bg-green-500/10 flex items-center justify-center">
-        <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
+      <div style={{ ...styles.icon95, backgroundColor: '#008000' }}>
+        <span style={{ fontSize: '10px' }}>$</span>
       </div>
     );
   };
 
-  // Get label for activity type
   const getActivityLabel = (type) => {
     if (type?.includes('target')) return 'MEME Buy';
     if (type?.includes('self')) return 'Buyback';
@@ -96,147 +98,377 @@ const RecentBuys = () => {
     return 'Buy';
   };
 
-  if (loading) {
-    return (
-      <div className="w-full max-w-2xl mx-auto px-4">
-        <div className="bg-[#0d0d0d] rounded-2xl border border-[#1c1c1e] overflow-hidden">
-          <div className="flex items-center gap-3 px-5 py-4 border-b border-[#1c1c1e]">
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-            <span className="text-[13px] font-semibold text-[#86868b]">Recent Activity</span>
-          </div>
-          <div className="p-2">
-            {[...Array(3)].map((_, i) => (
-              <div key={i} className="flex items-center gap-3 px-3 py-3 animate-pulse">
-                <div className="w-9 h-9 rounded-full bg-[#1c1c1e]"></div>
-                <div className="flex-1">
-                  <div className="h-3.5 bg-[#1c1c1e] rounded-md w-28 mb-1.5"></div>
-                  <div className="h-2.5 bg-[#1c1c1e] rounded-md w-16"></div>
-                </div>
-                <div className="text-right">
-                  <div className="h-3.5 bg-[#1c1c1e] rounded-md w-20 mb-1.5"></div>
-                  <div className="h-2.5 bg-[#1c1c1e] rounded-md w-8 ml-auto"></div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Empty state
-  if (buys.length === 0) {
-    return (
-      <div className="w-full max-w-2xl mx-auto px-4">
-        <div className="bg-[#0d0d0d] rounded-2xl border border-[#1c1c1e] overflow-hidden">
-          {/* Header */}
-          <div className="flex items-center justify-between px-5 py-3 border-b border-[#1c1c1e]">
-            <div className="flex items-center gap-2.5">
-              <div className="w-2 h-2 bg-[#48484a] rounded-full"></div>
-              <span className="text-[13px] font-semibold text-[#f5f5f7]">Recent Activity</span>
-            </div>
-          </div>
-
-          {/* Empty State Content */}
-          <div className="py-12 px-6 flex flex-col items-center justify-center">
-            {/* Icon */}
-            <div className="w-14 h-14 rounded-full bg-[#1c1c1e] flex items-center justify-center mb-4">
-              <svg 
-                className="w-7 h-7 text-[#48484a]" 
-                fill="none" 
-                stroke="currentColor" 
-                viewBox="0 0 24 24"
-              >
-                <path 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round" 
-                  strokeWidth="1.5" 
-                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" 
-                />
-              </svg>
-            </div>
-
-            {/* Text */}
-            <h3 className="text-[15px] font-semibold text-[#f5f5f7] mb-1">
-              No Activity Yet
-            </h3>
-            <p className="text-[13px] text-[#86868b] text-center max-w-[240px]">
-              Transactions will appear here as they happen
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  if (isMinimized) return null;
 
   return (
-    <div className="w-full max-w-2xl mx-auto px-4">
-      <div className="bg-[#0d0d0d] rounded-2xl border border-[#1c1c1e] overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-[#1c1c1e]">
-          <div className="flex items-center gap-2.5">
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-            <span className="text-[13px] font-semibold text-[#f5f5f7]">Recent Activity</span>
+    <div style={styles.windowContainer}>
+      {/* Window Frame */}
+      <div style={styles.window95}>
+        {/* Title Bar */}
+        <div style={styles.titleBar}>
+          <div style={styles.titleBarLeft}>
+            <span style={styles.titleText}>Recent Activity</span>
           </div>
-          <span className="text-[11px] text-[#86868b]">{buys.length} transactions</span>
         </div>
 
-        {/* Scrollable List */}
-        <div className="max-h-[420px] overflow-y-auto">
-          <div className="p-1.5">
-            <AnimatePresence>
-              {buys.map((buy, index) => (
-                <motion.a
-                  key={buy.id || index}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ delay: index * 0.02, duration: 0.2 }}
-                  href={buy.transaction_signature ? `https://solscan.io/tx/${buy.transaction_signature}` : '#'}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-[#1c1c1e]/50 active:bg-[#1c1c1e] transition-colors cursor-pointer group"
-                >
-                  {/* Icon */}
-                  {getActivityIcon(buy.activity_type)}
+        {/* Menu Bar */}
+        <div style={styles.menuBar}>
+          <span style={styles.menuItem}>File</span>
+          <span style={styles.menuItem}>Edit</span>
+          <span style={styles.menuItem}>View</span>
+          <span style={styles.menuItem}>Help</span>
+        </div>
 
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[14px] font-medium text-[#f5f5f7] truncate">
+        {/* Toolbar */}
+        <div style={styles.toolbar}>
+          <button style={styles.toolbarButton} onClick={fetchRecentBuys}>
+            <span>🔄</span> Refresh
+          </button>
+          <div style={styles.toolbarSeparator}></div>
+          <div style={styles.statusIndicator}>
+            <div style={styles.statusDot}></div>
+            <span style={{ fontSize: '11px' }}>Live</span>
+          </div>
+        </div>
+
+        {/* Content Area */}
+        <div style={styles.contentArea}>
+          {loading ? (
+            <div style={styles.loadingContainer}>
+              <div style={styles.loadingWindow}>
+                <div style={styles.loadingTitleBar}>
+                  <span style={{ fontSize: '11px', fontWeight: 'bold' }}>Loading...</span>
+                </div>
+                <div style={styles.loadingContent}>
+                  <div style={styles.hourglassIcon}>⏳</div>
+                  <p style={{ margin: '8px 0', fontSize: '11px' }}>Please wait while Windows loads your transactions...</p>
+                  <div style={styles.progressBarOuter}>
+                    <div style={styles.progressBarInner}></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : buys.length === 0 ? (
+            <div style={styles.emptyState}>
+              <div style={styles.emptyIcon}>📂</div>
+              <p style={styles.emptyTitle}>This folder is empty</p>
+              <p style={styles.emptySubtitle}>Transactions will appear here as they happen.</p>
+            </div>
+          ) : (
+            <>
+              {/* Column Headers */}
+              <div style={styles.listHeader}>
+                <div style={{ ...styles.headerCell, width: '32px' }}></div>
+                <div style={{ ...styles.headerCell, flex: 1 }}>Name</div>
+                <div style={{ ...styles.headerCell, width: '80px' }}>Type</div>
+                <div style={{ ...styles.headerCell, width: '100px', textAlign: 'right' }}>Amount</div>
+                <div style={{ ...styles.headerCell, width: '70px', textAlign: 'right' }}>Time</div>
+              </div>
+
+              {/* List Items */}
+              <div style={styles.listContainer}>
+                {buys.map((buy, index) => (
+                  <a
+                    key={buy.id || index}
+                    href={buy.transaction_signature ? `https://solscan.io/tx/${buy.transaction_signature}` : '#'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={styles.listItem}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = '#000080';
+                      e.currentTarget.style.color = '#ffffff';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                      e.currentTarget.style.color = '#000000';
+                    }}
+                  >
+                    <div style={{ width: '32px', display: 'flex', justifyContent: 'center' }}>
+                      {getActivityIcon(buy.activity_type)}
+                    </div>
+                    <div style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {buy.token_name || getActivityLabel(buy.activity_type)}
                     </div>
-                    <div className="text-[12px] text-[#86868b]">
+                    <div style={{ width: '80px', fontSize: '11px' }}>
                       {getActivityLabel(buy.activity_type)}
                     </div>
-                  </div>
-
-                  {/* Amount & Time */}
-                  <div className="text-right flex-shrink-0">
-                    <div className="text-[14px] font-semibold text-[#30d158]">
+                    <div style={{ width: '100px', textAlign: 'right', color: '#008000', fontWeight: 'bold' }}>
                       +{formatSol(buy.amount_sol)} SOL
                     </div>
-                    <div className="text-[11px] text-[#48484a]">
+                    <div style={{ width: '70px', textAlign: 'right', fontSize: '11px' }}>
                       {timeAgo(buy.created_at)}
                     </div>
-                  </div>
+                  </a>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
 
-                  {/* Chevron */}
-                  <svg 
-                    className="w-4 h-4 text-[#48484a] group-hover:text-[#86868b] transition-colors flex-shrink-0" 
-                    fill="none" 
-                    stroke="currentColor" 
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7" />
-                  </svg>
-                </motion.a>
-              ))}
-            </AnimatePresence>
+        {/* Status Bar */}
+        <div style={styles.statusBar}>
+          <div style={styles.statusSection}>
+            {buys.length} object(s)
+          </div>
+          <div style={{ ...styles.statusSection, maxWidth: '100px', textAlign: 'center' }}>
+            {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
           </div>
         </div>
       </div>
     </div>
   );
 };
+
+// Windows 95 Styles
+const styles = {
+  windowContainer: {
+    width: '100%',
+    maxWidth: '640px',
+    margin: '0 auto',
+    padding: '16px',
+    fontFamily: '"MS Sans Serif", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif',
+  },
+  window95: {
+    backgroundColor: '#c0c0c0',
+    border: '2px solid',
+    borderColor: '#ffffff #808080 #808080 #ffffff',
+    boxShadow: '1px 1px 0 0 #000000',
+  },
+  titleBar: {
+    background: 'linear-gradient(90deg, #000080, #1084d0)',
+    padding: '2px 3px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  titleBarLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+  },
+  titleText: {
+    color: '#ffffff',
+    fontSize: '11px',
+    fontWeight: 'bold',
+    textShadow: '1px 1px 0 #000000',
+  },
+  titleBarButtons: {
+    display: 'flex',
+    gap: '2px',
+  },
+  titleButton: {
+    width: '16px',
+    height: '14px',
+    backgroundColor: '#c0c0c0',
+    border: '1px solid',
+    borderColor: '#ffffff #808080 #808080 #ffffff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    padding: 0,
+    fontSize: '11px',
+    fontWeight: 'bold',
+  },
+  closeButton: {
+    marginLeft: '2px',
+  },
+  buttonIcon: {
+    lineHeight: 1,
+    marginTop: '-2px',
+  },
+  menuBar: {
+    backgroundColor: '#c0c0c0',
+    borderBottom: '1px solid #808080',
+    padding: '2px 4px',
+    display: 'flex',
+    gap: '8px',
+  },
+  menuItem: {
+    fontSize: '11px',
+    padding: '2px 6px',
+    cursor: 'pointer',
+  },
+  toolbar: {
+    backgroundColor: '#c0c0c0',
+    padding: '4px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    borderBottom: '1px solid #808080',
+  },
+  toolbarButton: {
+    backgroundColor: '#c0c0c0',
+    border: '2px solid',
+    borderColor: '#ffffff #808080 #808080 #ffffff',
+    padding: '2px 8px',
+    fontSize: '11px',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+  },
+  toolbarSeparator: {
+    width: '2px',
+    height: '20px',
+    borderLeft: '1px solid #808080',
+    borderRight: '1px solid #ffffff',
+  },
+  statusIndicator: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+    marginLeft: 'auto',
+  },
+  statusDot: {
+    width: '4px',
+    height: '4px',
+    backgroundColor: '#00ff00',
+    borderRadius: '50%',
+    boxShadow: '0 0 4px #00ff00',
+  },
+  contentArea: {
+    backgroundColor: '#ffffff',
+    border: '2px solid',
+    borderColor: '#808080 #ffffff #ffffff #808080',
+    margin: '4px',
+    minHeight: '300px',
+    maxHeight: '400px',
+    overflowY: 'auto',
+  },
+  listHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    padding: '4px 8px',
+    backgroundColor: '#c0c0c0',
+    borderBottom: '2px solid',
+    borderColor: '#808080 #ffffff #ffffff #808080',
+    position: 'sticky',
+    top: 0,
+    zIndex: 10,
+  },
+  headerCell: {
+    fontSize: '11px',
+    fontWeight: 'bold',
+    padding: '2px 4px',
+  },
+  listContainer: {
+    padding: '2px',
+  },
+  listItem: {
+    display: 'flex',
+    alignItems: 'center',
+    padding: '4px 8px',
+    fontSize: '11px',
+    cursor: 'pointer',
+    textDecoration: 'none',
+    color: '#000000',
+    transition: 'none',
+  },
+  icon95: {
+    width: '16px',
+    height: '16px',
+    backgroundColor: '#000080',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: '#ffffff',
+    fontSize: '10px',
+    imageRendering: 'pixelated',
+  },
+  loadingContainer: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: '100%',
+    minHeight: '200px',
+  },
+  loadingWindow: {
+    backgroundColor: '#c0c0c0',
+    border: '2px solid',
+    borderColor: '#ffffff #808080 #808080 #ffffff',
+    width: '280px',
+  },
+  loadingTitleBar: {
+    background: 'linear-gradient(90deg, #000080, #1084d0)',
+    padding: '2px 4px',
+    color: '#ffffff',
+  },
+  loadingContent: {
+    padding: '16px',
+    textAlign: 'center',
+  },
+  hourglassIcon: {
+    fontSize: '32px',
+    marginBottom: '8px',
+  },
+  progressBarOuter: {
+    width: '100%',
+    height: '16px',
+    backgroundColor: '#ffffff',
+    border: '2px solid',
+    borderColor: '#808080 #ffffff #ffffff #808080',
+    overflow: 'hidden',
+  },
+  progressBarInner: {
+    width: '60%',
+    height: '100%',
+    background: 'repeating-linear-gradient(90deg, #000080 0px, #000080 8px, #c0c0c0 8px, #c0c0c0 16px)',
+    animation: 'progress95 1s linear infinite',
+  },
+  emptyState: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '48px 16px',
+    textAlign: 'center',
+  },
+  emptyIcon: {
+    fontSize: '48px',
+    marginBottom: '16px',
+  },
+  emptyTitle: {
+    fontSize: '12px',
+    fontWeight: 'bold',
+    margin: '0 0 4px 0',
+  },
+  emptySubtitle: {
+    fontSize: '11px',
+    color: '#808080',
+    margin: 0,
+  },
+  statusBar: {
+    backgroundColor: '#c0c0c0',
+    borderTop: '2px solid',
+    borderColor: '#ffffff #808080 #808080 #ffffff',
+    padding: '2px 4px',
+    display: 'flex',
+    gap: '4px',
+    fontSize: '11px',
+    height: '24px',
+  },
+  statusSection: {
+    flex: 1,
+    padding: '2px 4px',
+    border: '1px solid',
+    borderColor: '#808080 #ffffff #ffffff #808080',
+    backgroundColor: '#c0c0c0',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+  },
+};
+
+// Add keyframes for progress bar animation and system font fallback
+if (typeof document !== 'undefined') {
+  const styleSheet = document.createElement('style');
+  styleSheet.textContent = `
+    @keyframes progress95 {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(200%); }
+    }
+  `;
+  document.head.appendChild(styleSheet);
+}
 
 export default RecentBuys;

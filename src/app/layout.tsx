@@ -9,8 +9,8 @@ const pixelify = Pixelify_Sans({
 })
 
 export const metadata: Metadata = {
-  title: 'Meme Protocol',
-  description: 'All Roads Lead to Meme',
+  title: 'Memestonks',
+  description: 'giving our memestonks value with an automated flywheel protocol',
 }
 
 export default function RootLayout({
