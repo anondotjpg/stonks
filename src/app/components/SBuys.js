@@ -79,8 +79,8 @@ const RecentBuys = () => {
     }
     if (type?.includes('combined')) {
       return (
-        <div style={{ ...styles.icon95, backgroundColor: '#808000' }}>
-          <span style={{ fontSize: '10px' }}>⚡</span>
+        <div style={styles.icon95}>
+          <Image src="/print.png" alt="Print" width={16} height={16} style={{ imageRendering: 'pixelated' }} />
         </div>
       );
     }
@@ -97,6 +97,23 @@ const RecentBuys = () => {
     if (type?.includes('combined')) return 'Stonks Fund';
     return 'Buy';
   };
+
+  const getDisplayName = (buy) => {
+    const typeLabel = getActivityLabel(buy.activity_type);
+  
+    // Only append token_name if activity is Stonks Fund
+    // AND token_name exists AND it's not literally "Stonks Fund"
+    if (
+      typeLabel === 'Stonks Fund' &&
+      buy.token_name &&
+      buy.token_name !== 'Stonks Fund'
+    ) {
+      return `Stonks Fund (from ${buy.token_name})`;
+    }
+  
+    // Otherwise: just show token_name if it exists, else the activity label
+    return buy.token_name || typeLabel;
+  };  
 
   if (isMinimized) return null;
 
@@ -187,7 +204,7 @@ const RecentBuys = () => {
                       {getActivityIcon(buy.activity_type)}
                     </div>
                     <div style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {buy.token_name || getActivityLabel(buy.activity_type)}
+                      {getDisplayName(buy)}
                     </div>
                     <div style={{ width: '80px', fontSize: '11px' }}>
                       {getActivityLabel(buy.activity_type)}
