@@ -14,6 +14,7 @@ const TARGET_TOKEN_CA = process.env.TARGET_TOKEN_CA;
 const TARGET_TOKEN_NAME = process.env.TARGET_TOKEN_NAME || 'Stonks Fund';
 const MIN_CLAIMED_TO_BUY = 0.01;
 const RESERVE_FOR_FEES = 0.002;
+const TRANSFER_FEE = 0.000005; // SOL transfer fee
 const BUY_SLIPPAGE = 15;
 const PRIORITY_FEE = 0.0005;
 
@@ -145,6 +146,35 @@ async function executeBuy(apiKey, mintAddress, amountSol) {
   }
 }
 
+async function transferSol(fromApiKey, toAddress, amountSol) {
+  try {
+    const roundedAmount = Math.floor(amountSol * 1000000) / 1000000;
+    if (roundedAmount < 0.001) return { success: false, error: 'Amount too small' };
+
+    const response = await fetch(`https://pumpportal.fun/api/transfer?api-key=${fromApiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to: toAddress,
+        amount: roundedAmount
+      })
+    });
+
+    const responseText = await response.text();
+    if (!response.ok) return { success: false, error: responseText };
+
+    let result;
+    try { result = JSON.parse(responseText); } catch { result = {}; }
+
+    return { 
+      success: true, 
+      signature: result.signature || result.txSignature || result.transaction 
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
 async function logActivity(walletId, type, description, tokenName, signature, amountSol) {
   try {
     await supabase.from('wallet_activities').insert([{
@@ -159,7 +189,7 @@ async function logActivity(walletId, type, description, tokenName, signature, am
   } catch {}
 }
 
-async function processWallet(wallet, token) {
+async function processWallet(wallet, token, devWallet) {
   const result = {
     tokenName: token?.name || 'Unknown',
     claimedAmount: 0,
@@ -233,7 +263,7 @@ async function processWallet(wallet, token) {
       TARGET_TOKEN_CA.toLowerCase() === token.mint_address.toLowerCase();
 
     if (isSameToken) {
-      // Single buy
+      // This IS the dev wallet / target token - single buy from own wallet
       const buyResult = await executeBuy(wallet.api_key, TARGET_TOKEN_CA, buyAmountSol);
       result.bought = buyResult.success;
       
@@ -244,13 +274,31 @@ async function processWallet(wallet, token) {
         token.name, buyResult.signature, buyAmountSol
       );
     } else {
-      // Split 50/50 - run both buys in parallel
+      // Split 50/50
       const halfAmount = buyAmountSol / 2;
       
-      const [targetResult, selfResult] = await Promise.all([
-        TARGET_TOKEN_CA ? executeBuy(wallet.api_key, TARGET_TOKEN_CA, halfAmount) : { success: false },
-        executeBuy(wallet.api_key, token.mint_address, halfAmount)
-      ]);
+      // For target token: transfer to dev wallet, then dev wallet buys
+      let targetResult = { success: false, error: 'Dev wallet not found' };
+      
+      if (TARGET_TOKEN_CA && devWallet) {
+        // Transfer SOL to dev wallet
+        const transferAmount = halfAmount - TRANSFER_FEE;
+        const transferResult = await transferSol(wallet.api_key, devWallet.public_key, transferAmount);
+        
+        if (transferResult.success) {
+          // Wait a bit for transfer to confirm
+          await sleep(2000);
+          
+          // Buy from dev wallet (shows as dev buy)
+          targetResult = await executeBuy(devWallet.api_key, TARGET_TOKEN_CA, transferAmount - PRIORITY_FEE);
+          targetResult.transferSignature = transferResult.signature;
+        } else {
+          targetResult = { success: false, error: `Transfer failed: ${transferResult.error}` };
+        }
+      }
+      
+      // Self token: buy directly from own wallet
+      const selfResult = await executeBuy(wallet.api_key, token.mint_address, halfAmount);
 
       result.bought = targetResult.success || selfResult.success;
 
@@ -259,7 +307,9 @@ async function processWallet(wallet, token) {
         TARGET_TOKEN_CA && logActivity(
           wallet.id,
           targetResult.success ? 'buy_target_token' : 'buy_target_token_failed',
-          targetResult.success ? `Bought ${TARGET_TOKEN_NAME} with ${halfAmount.toFixed(6)} SOL` : `Failed: ${targetResult.error}`,
+          targetResult.success 
+            ? `Transferred & bought ${TARGET_TOKEN_NAME} with ${halfAmount.toFixed(6)} SOL (dev wallet)` 
+            : `Failed: ${targetResult.error}`,
           TARGET_TOKEN_NAME, targetResult.signature, halfAmount
         ),
         logActivity(
@@ -284,14 +334,14 @@ async function processWallet(wallet, token) {
 }
 
 // Process wallets in parallel chunks
-async function processInParallel(wallets, walletTokenMap, concurrency) {
+async function processInParallel(wallets, walletTokenMap, devWallet, concurrency) {
   const results = [];
   
   for (let i = 0; i < wallets.length; i += concurrency) {
     const chunk = wallets.slice(i, i + concurrency);
     
     const chunkResults = await Promise.all(
-      chunk.map(wallet => processWallet(wallet, walletTokenMap[wallet.id]))
+      chunk.map(wallet => processWallet(wallet, walletTokenMap[wallet.id], devWallet))
     );
     
     results.push(...chunkResults);
@@ -334,10 +384,24 @@ export async function GET(request) {
       walletTokenMap[token.wallet_id] = token;
     });
 
+    // Find dev wallet - the wallet that owns the first/target token
+    let devWallet = null;
+    if (TARGET_TOKEN_CA) {
+      const targetToken = (tokensResponse.data || []).find(
+        t => t.mint_address?.toLowerCase() === TARGET_TOKEN_CA.toLowerCase()
+      );
+      if (targetToken) {
+        devWallet = wallets.find(w => w.id === targetToken.wallet_id);
+        if (devWallet) {
+          console.log(`Dev wallet found: ${devWallet.public_key.slice(0, 8)}... (${targetToken.name})`);
+        }
+      }
+    }
+
     console.log(`Processing ${wallets.length} wallets (${CONCURRENT_WALLETS} concurrent)`);
 
     // Process all wallets in parallel
-    const results = await processInParallel(wallets, walletTokenMap, CONCURRENT_WALLETS);
+    const results = await processInParallel(wallets, walletTokenMap, devWallet, CONCURRENT_WALLETS);
 
     // Calculate stats
     const stats = {
