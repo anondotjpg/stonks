@@ -21,8 +21,8 @@ const FEE_ACCOUNT_RATE_LIMIT_MS = 24 * 60 * 60 * 1000; // 24 hours in millisecon
 
 // Funding constants (in lamports to avoid floating point issues)
 const BASE_FUNDING_LAMPORTS = 25_000_000; // 0.025 SOL
-const FIRST_TOKEN_BONUS_LAMPORTS = 500_000_000; // 0.5 SOL
-const FIRST_TOKEN_DEV_BUY_SOL = 0.4;
+const FIRST_TOKEN_BONUS_LAMPORTS = 50_000_000; // 0.5 SOL
+const FIRST_TOKEN_DEV_BUY_SOL = 0.025;
 
 // Helper function to get client IP address
 function getClientIP(request) {

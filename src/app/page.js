@@ -128,7 +128,7 @@ export default function Home() {
               <div style={styles.buttonRow}>
                 <Link href="/create" style={styles.button}>[create]</Link>
                 <a href="https://x.com/" target="_blank" rel="noopener noreferrer" style={styles.button}>[how it works]</a>
-                <a href="https://x.com/" target="_blank" rel="noopener noreferrer" style={styles.button}>[follow]</a>
+                <a href="https://x.com/launchastonk" target="_blank" rel="noopener noreferrer" style={styles.button}>[follow]</a>
               </div>
             </div>
 
