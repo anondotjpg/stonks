@@ -253,7 +253,7 @@ const PumpTokenCreator = () => {
                       name="name"
                       value={formData.name}
                       onChange={handleInputChange}
-                      placeholder="Meme"
+                      placeholder="Memestonk"
                       style={styles.input}
                     />
                   </div>
@@ -264,7 +264,7 @@ const PumpTokenCreator = () => {
                       name="symbol"
                       value={formData.symbol}
                       onChange={handleInputChange}
-                      placeholder="MEME"
+                      placeholder="STONK"
                       maxLength="10"
                       style={styles.input}
                     />
@@ -279,7 +279,7 @@ const PumpTokenCreator = () => {
                   name="description"
                   value={formData.description}
                   onChange={handleInputChange}
-                  placeholder="The best token ever"
+                  placeholder="The best stonk ever"
                   rows={3}
                   maxLength="500"
                   style={styles.textarea}
