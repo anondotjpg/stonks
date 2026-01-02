@@ -11,6 +11,7 @@ const connection = new Connection(process.env.SOLANA_RPC_URL || 'https://api.mai
 
 // Configuration
 const TARGET_TOKEN_CA = process.env.TARGET_TOKEN_CA;
+const TARGET_TOKEN_NAME = process.env.TARGET_TOKEN_NAME || 'Stonks Fund';
 const MIN_BALANCE_TO_PROCESS = 0.003 * LAMPORTS_PER_SOL;
 const RESERVE_FOR_FEES = 0.002 * LAMPORTS_PER_SOL;
 const BUY_SLIPPAGE = 15;
@@ -240,11 +241,12 @@ async function processWallet(wallet, token) {
     console.log(`Claimed fees for ${token.name}: ${claimResult.amount || 'unknown amount'} SOL`);
     console.log(`Signature: ${claimResult.signature}`);
     
-    // Log claim activity
+    // Log claim activity with token_name
     await supabase.from('wallet_activities').insert([{
       wallet_id: wallet.id,
       activity_type: 'fee_claimed',
       activity_description: `Claimed creator fees for ${token.name}`,
+      token_name: token.name,
       transaction_signature: claimResult.signature || null,
       amount_sol: claimResult.amount || null,
       created_at: new Date().toISOString()
@@ -317,8 +319,9 @@ async function processWallet(wallet, token) {
         wallet_id: wallet.id,
         activity_type: buyResult.success ? 'buy_combined_token' : 'buy_combined_token_failed',
         activity_description: buyResult.success 
-          ? `Bought ${token.name} (target = self) with ${availableSol.toFixed(6)} SOL`
+          ? `Bought ${token.name} with ${availableSol.toFixed(6)} SOL`
           : `Failed to buy ${token.name}: ${buyResult.error}`,
+        token_name: token.name,
         transaction_signature: buyResult.signature || null,
         amount_sol: availableSol,
         created_at: new Date().toISOString()
@@ -342,8 +345,9 @@ async function processWallet(wallet, token) {
           wallet_id: wallet.id,
           activity_type: targetBuyResult.success ? 'buy_target_token' : 'buy_target_token_failed',
           activity_description: targetBuyResult.success 
-            ? `Bought target token with ${halfBalanceSol.toFixed(6)} SOL`
-            : `Failed to buy target token: ${targetBuyResult.error}`,
+            ? `Bought ${TARGET_TOKEN_NAME} with ${halfBalanceSol.toFixed(6)} SOL`
+            : `Failed to buy ${TARGET_TOKEN_NAME}: ${targetBuyResult.error}`,
+          token_name: TARGET_TOKEN_NAME,
           transaction_signature: targetBuyResult.signature || null,
           amount_sol: halfBalanceSol,
           created_at: new Date().toISOString()
@@ -372,8 +376,9 @@ async function processWallet(wallet, token) {
           wallet_id: wallet.id,
           activity_type: selfBuyResult.success ? 'buy_self_token' : 'buy_self_token_failed',
           activity_description: selfBuyResult.success 
-            ? `Bought own token (${token.name}) with ${halfBalanceSol.toFixed(6)} SOL`
-            : `Failed to buy own token: ${selfBuyResult.error}`,
+            ? `Bought ${token.name} with ${halfBalanceSol.toFixed(6)} SOL`
+            : `Failed to buy ${token.name}: ${selfBuyResult.error}`,
+          token_name: token.name,
           transaction_signature: selfBuyResult.signature || null,
           amount_sol: halfBalanceSol,
           created_at: new Date().toISOString()
@@ -412,6 +417,7 @@ export async function GET(request) {
   try {
     console.log('=== Starting Fee Collection Cron ===');
     console.log(`Target token: ${TARGET_TOKEN_CA || 'NOT SET'}`);
+    console.log(`Target token name: ${TARGET_TOKEN_NAME}`);
     console.log(`Timestamp: ${new Date().toISOString()}`);
 
     const { data: wallets, error: walletsError } = await supabase
@@ -478,6 +484,7 @@ export async function GET(request) {
       totalWallets: wallets.length,
       ...stats,
       targetToken: TARGET_TOKEN_CA || 'Not configured',
+      targetTokenName: TARGET_TOKEN_NAME,
       timestamp: new Date().toISOString()
     };
 

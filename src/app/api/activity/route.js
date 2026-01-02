@@ -12,7 +12,7 @@ export async function GET(request) {
     const type = searchParams.get('type') || 'all'; // 'buy', 'claim', 'all'
     const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 50);
 
-    // Build query
+    // Build query - now includes token_name column directly
     let query = supabase
       .from('wallet_activities')
       .select(`
@@ -20,6 +20,7 @@ export async function GET(request) {
         wallet_id,
         activity_type,
         activity_description,
+        token_name,
         transaction_signature,
         amount_sol,
         created_at
@@ -43,29 +44,10 @@ export async function GET(request) {
       throw new Error(`Database error: ${error.message}`);
     }
 
-    // Optionally fetch token info for each activity
-    // This joins token name if available
-    const enrichedActivities = activities.map(activity => {
-      // Extract token name from description if possible
-      let tokenName = null;
-      if (activity.activity_description) {
-        // Try to extract token name from patterns like "Bought own token (TokenName)"
-        const match = activity.activity_description.match(/\(([^)]+)\)/);
-        if (match) {
-          tokenName = match[1];
-        }
-      }
-      
-      return {
-        ...activity,
-        token_name: tokenName
-      };
-    });
-
     return NextResponse.json({
       success: true,
-      activities: enrichedActivities,
-      count: enrichedActivities.length
+      activities: activities || [],
+      count: activities?.length || 0
     });
 
   } catch (error) {
