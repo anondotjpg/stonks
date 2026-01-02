@@ -152,7 +152,7 @@ const RecentBuys = () => {
             <div style={styles.emptyState}>
               <div style={styles.emptyIcon}>📂</div>
               <p style={styles.emptyTitle}>This folder is empty</p>
-              <p style={styles.emptySubtitle}>Transactions will appear here as they happen.</p>
+              <p style={styles.emptySubtitle}>Buybacks will appear here as they happen.</p>
             </div>
           ) : (
             <>
