@@ -92,9 +92,9 @@ const RecentBuys = () => {
   };
 
   const getActivityLabel = (type) => {
-    if (type?.includes('target')) return 'MEME Buy';
+    if (type?.includes('target')) return 'Stonks Fund';
     if (type?.includes('self')) return 'Buyback';
-    if (type?.includes('combined')) return 'MEME Buy';
+    if (type?.includes('combined')) return 'Stonks Fund';
     return 'Buy';
   };
 
