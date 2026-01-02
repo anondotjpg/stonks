@@ -127,7 +127,7 @@ export default function Home() {
               <div style={styles.heroDivider}></div>
               <div style={styles.buttonRow}>
                 <Link href="/create" style={styles.button}>[create]</Link>
-                <a href="https://x.com/launchastonk/status/2007180341212286988" target="_blank" rel="noopener noreferrer" style={styles.button}>[how it works]</a>
+                <a href="https://x.com/launchastonk/status/2007230129651794337" target="_blank" rel="noopener noreferrer" style={styles.button}>[how it works]</a>
                 <a href="https://x.com/launchastonk" target="_blank" rel="noopener noreferrer" style={styles.button}>[follow]</a>
               </div>
             </div>
