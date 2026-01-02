@@ -14,14 +14,13 @@ const TARGET_TOKEN_CA = process.env.TARGET_TOKEN_CA;
 const MIN_BALANCE_TO_PROCESS = 0.003 * LAMPORTS_PER_SOL;
 const RESERVE_FOR_FEES = 0.002 * LAMPORTS_PER_SOL;
 const BUY_SLIPPAGE = 15;
-const PRIORITY_FEE = 0.0005; // Increased for better landing
+const PRIORITY_FEE = 0.0005;
 
 // Timing configuration
-const FEE_CLAIM_CONFIRMATION_DELAY = 8000; // 8 seconds to wait for fee claim confirmation
-const TRANSACTION_DELAY = 2000; // 2 seconds between buy transactions
-const WALLET_DELAY = 1500; // 1.5 seconds between wallets
+const FEE_CLAIM_CONFIRMATION_DELAY = 8000;
+const TRANSACTION_DELAY = 2000;
+const WALLET_DELAY = 1500;
 
-// Verify cron secret to prevent unauthorized access
 function verifyCronSecret(request) {
   const authHeader = request.headers.get('authorization');
   const cronSecret = process.env.CRON_SECRET;
@@ -34,7 +33,6 @@ function verifyCronSecret(request) {
   return authHeader === `Bearer ${cronSecret}`;
 }
 
-// Get wallet SOL balance with retry
 async function getWalletBalance(publicKey, retries = 3) {
   for (let i = 0; i < retries; i++) {
     try {
@@ -50,7 +48,6 @@ async function getWalletBalance(publicKey, retries = 3) {
   return 0;
 }
 
-// Wait for transaction confirmation
 async function waitForConfirmation(signature, maxWaitMs = 30000) {
   if (!signature) return false;
   
@@ -86,15 +83,12 @@ async function claimCreatorFees(apiKey, mintAddress = null) {
   try {
     console.log(`Claiming creator fees...`);
 
-    // pump.fun claims all fees at once, no mint needed
-    // For meteora-dbc, mint is required
     const payload = {
       action: "collectCreatorFee",
       priorityFee: PRIORITY_FEE,
       pool: "pump"
     };
     
-    // Only needed for meteora-dbc
     if (mintAddress) {
       payload.mint = mintAddress;
     }
@@ -142,8 +136,6 @@ async function claimCreatorFees(apiKey, mintAddress = null) {
   }
 }
 
-// Execute a buy order via PumpPortal with auto pool detection
-// Supported pools: 'pump', 'raydium', 'pump-amm', 'launchlab', 'raydium-cpmm', 'bonk', 'auto'
 async function executeBuy(apiKey, mintAddress, amountSol) {
   try {
     const buyPayload = {
@@ -153,7 +145,7 @@ async function executeBuy(apiKey, mintAddress, amountSol) {
       denominatedInSol: 'true',
       slippage: BUY_SLIPPAGE,
       priorityFee: PRIORITY_FEE,
-      pool: 'auto' // Auto-detects: pump, raydium, pump-amm, launchlab, raydium-cpmm, bonk
+      pool: 'auto'
     };
 
     console.log(`Executing buy: ${amountSol} SOL for ${mintAddress} (auto pool detection)`);
@@ -172,7 +164,6 @@ async function executeBuy(apiKey, mintAddress, amountSol) {
       throw new Error(`Buy failed: ${response.status} - ${responseText}`);
     }
 
-    // Parse successful response
     let result;
     try {
       result = JSON.parse(responseText);
@@ -203,7 +194,6 @@ async function executeBuy(apiKey, mintAddress, amountSol) {
   }
 }
 
-// Process a single wallet
 async function processWallet(wallet, token) {
   const results = {
     walletId: wallet.id,
@@ -226,57 +216,61 @@ async function processWallet(wallet, token) {
     console.log(`Wallet ${wallet.public_key.slice(0, 8)}...: Initial balance = ${results.balanceBefore.toFixed(6)} SOL`);
 
     // Step 2: Claim creator fees (if token exists)
-    if (token?.mint_address) {
-      const claimResult = await claimCreatorFees(wallet.api_key, token.mint_address);
-      results.feeClaim = claimResult;
-
-      if (claimResult.success && claimResult.claimed) {
-        console.log(`Claimed fees for ${token.name}: ${claimResult.amount || 'unknown amount'} SOL`);
-        console.log(`Signature: ${claimResult.signature}`);
-        
-        // Log claim activity
-        await supabase.from('wallet_activities').insert([{
-          wallet_id: wallet.id,
-          activity_type: 'fee_claimed',
-          activity_description: `Claimed creator fees for ${token.name}`,
-          transaction_signature: claimResult.signature || null,
-          amount_sol: claimResult.amount || null,
-          created_at: new Date().toISOString()
-        }]);
-
-        // Wait for transaction confirmation before checking balance
-        if (claimResult.signature) {
-          console.log(`Waiting for fee claim confirmation...`);
-          const confirmed = await waitForConfirmation(claimResult.signature, 15000);
-          
-          if (!confirmed) {
-            // Even if confirmation check times out, wait a bit more
-            console.log(`Confirmation check timed out, waiting additional ${FEE_CLAIM_CONFIRMATION_DELAY}ms...`);
-            await new Promise(resolve => setTimeout(resolve, FEE_CLAIM_CONFIRMATION_DELAY));
-          } else {
-            // Add small buffer after confirmation
-            await new Promise(resolve => setTimeout(resolve, 2000));
-          }
-        } else {
-          // No signature returned, wait longer
-          console.log(`No signature returned, waiting ${FEE_CLAIM_CONFIRMATION_DELAY}ms for balance update...`);
-          await new Promise(resolve => setTimeout(resolve, FEE_CLAIM_CONFIRMATION_DELAY));
-        }
-      } else if (claimResult.success && !claimResult.claimed) {
-        console.log(`No fees to claim for ${token.name}`);
-      } else if (!claimResult.success) {
-        results.errors.push(`Fee claim failed: ${claimResult.error}`);
-      }
-    } else {
-      results.errors.push('No associated token found - skipping fee claim');
+    if (!token?.mint_address) {
+      results.errors.push('No associated token found - skipping');
+      return results;
     }
 
-    // Step 3: Get updated balance after claiming (with retry for accuracy)
+    const claimResult = await claimCreatorFees(wallet.api_key, token.mint_address);
+    results.feeClaim = claimResult;
+
+    // Only proceed with buys if fees were actually claimed
+    if (!claimResult.success || !claimResult.claimed) {
+      if (claimResult.success && !claimResult.claimed) {
+        console.log(`No fees to claim for ${token.name} - skipping buys`);
+        results.errors.push('No fees claimed - skipping buys');
+      } else {
+        console.log(`Fee claim failed for ${token.name} - skipping buys`);
+        results.errors.push(`Fee claim failed: ${claimResult.error}`);
+      }
+      return results;
+    }
+
+    // Fees were claimed - proceed with buys
+    console.log(`Claimed fees for ${token.name}: ${claimResult.amount || 'unknown amount'} SOL`);
+    console.log(`Signature: ${claimResult.signature}`);
+    
+    // Log claim activity
+    await supabase.from('wallet_activities').insert([{
+      wallet_id: wallet.id,
+      activity_type: 'fee_claimed',
+      activity_description: `Claimed creator fees for ${token.name}`,
+      transaction_signature: claimResult.signature || null,
+      amount_sol: claimResult.amount || null,
+      created_at: new Date().toISOString()
+    }]);
+
+    // Wait for transaction confirmation before checking balance
+    if (claimResult.signature) {
+      console.log(`Waiting for fee claim confirmation...`);
+      const confirmed = await waitForConfirmation(claimResult.signature, 15000);
+      
+      if (!confirmed) {
+        console.log(`Confirmation check timed out, waiting additional ${FEE_CLAIM_CONFIRMATION_DELAY}ms...`);
+        await new Promise(resolve => setTimeout(resolve, FEE_CLAIM_CONFIRMATION_DELAY));
+      } else {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    } else {
+      console.log(`No signature returned, waiting ${FEE_CLAIM_CONFIRMATION_DELAY}ms for balance update...`);
+      await new Promise(resolve => setTimeout(resolve, FEE_CLAIM_CONFIRMATION_DELAY));
+    }
+
+    // Step 3: Get updated balance after claiming
     console.log('Checking balance after fee claim...');
     let balanceAfterClaim = await getWalletBalance(wallet.public_key);
     
-    // If balance seems unchanged after a successful claim, retry once more
-    if (results.feeClaim?.claimed && balanceAfterClaim <= balanceBefore) {
+    if (balanceAfterClaim <= balanceBefore) {
       console.log('Balance unchanged, waiting additional 3s and retrying...');
       await new Promise(resolve => setTimeout(resolve, 3000));
       balanceAfterClaim = await getWalletBalance(wallet.public_key);
@@ -317,7 +311,7 @@ async function processWallet(wallet, token) {
         combinedBuy: true,
         ...buyResult
       };
-      results.selfTokenBuy = results.targetTokenBuy; // Reference same result
+      results.selfTokenBuy = results.targetTokenBuy;
 
       await supabase.from('wallet_activities').insert([{
         wallet_id: wallet.id,
@@ -356,11 +350,9 @@ async function processWallet(wallet, token) {
         }]);
 
         if (targetBuyResult.success && targetBuyResult.signature) {
-          // Wait for confirmation before next buy
           await waitForConfirmation(targetBuyResult.signature, 10000);
         }
         
-        // Delay between transactions
         await new Promise(resolve => setTimeout(resolve, TRANSACTION_DELAY));
       } else {
         results.errors.push('TARGET_TOKEN_CA not configured');
@@ -413,7 +405,6 @@ async function processWallet(wallet, token) {
 export async function GET(request) {
   const startTime = Date.now();
   
-  // Verify cron secret
   if (!verifyCronSecret(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -423,7 +414,6 @@ export async function GET(request) {
     console.log(`Target token: ${TARGET_TOKEN_CA || 'NOT SET'}`);
     console.log(`Timestamp: ${new Date().toISOString()}`);
 
-    // Fetch all active wallets
     const { data: wallets, error: walletsError } = await supabase
       .from('secure_wallets')
       .select('*')
@@ -444,7 +434,6 @@ export async function GET(request) {
 
     console.log(`Found ${wallets.length} active wallets`);
 
-    // Fetch tokens to map wallet_id -> token
     const { data: tokens } = await supabase
       .from('tokens')
       .select('wallet_id, mint_address, name, symbol')
@@ -457,7 +446,6 @@ export async function GET(request) {
       });
     }
 
-    // Process each wallet
     const results = [];
     let stats = { processed: 0, claimed: 0, bought: 0, skipped: 0, errors: 0 };
 
@@ -473,13 +461,12 @@ export async function GET(request) {
       if (result.targetTokenBuy?.success || result.selfTokenBuy?.success) {
         stats.bought++;
         stats.processed++;
-      } else if (result.errors.some(e => e.includes('Insufficient'))) {
+      } else if (result.errors.some(e => e.includes('No fees claimed') || e.includes('Insufficient'))) {
         stats.skipped++;
       } else if (result.errors.length > 0) {
         stats.errors++;
       }
 
-      // Delay between wallets
       await new Promise(resolve => setTimeout(resolve, WALLET_DELAY));
     }
 
