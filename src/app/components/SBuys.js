@@ -108,7 +108,7 @@ const RecentBuys = () => {
       buy.token_name &&
       buy.token_name !== 'Stonks Fund'
     ) {
-      return `Stonks Fund (from ${buy.token_name})`;
+      return `Stonks Fund`;
     }
   
     // Otherwise: just show token_name if it exists, else the activity label
