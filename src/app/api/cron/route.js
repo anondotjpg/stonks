@@ -183,15 +183,27 @@ async function processWallet(wallet, token) {
     // Claim fees
     const claimResult = await claimCreatorFees(wallet.api_key, token.mint_address);
     
-    if (!claimResult.success || !claimResult.claimed) {
-      result.error = claimResult.claimed === false ? 'No fees' : claimResult.error;
+    // If no fees or claim failed, return immediately - no waiting
+    if (!claimResult.success) {
+      result.error = claimResult.error;
       return result;
     }
+    
+    if (!claimResult.claimed) {
+      result.error = 'No fees';
+      return result; // Skip balance checking entirely
+    }
 
-    // Wait for balance change to get actual claimed amount
+    // Only wait for balance change if claim was successful
     const balanceResult = await waitForBalanceChange(wallet.public_key, balanceBefore);
     const claimedAmount = balanceResult.claimedAmount;
     result.claimedAmount = claimedAmount;
+    
+    // If balance didn't change despite successful claim, something went wrong
+    if (claimedAmount === 0) {
+      result.error = 'Claim sent but no balance change';
+      return result;
+    }
 
     // Log claim
     await logActivity(
