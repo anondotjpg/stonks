@@ -100,7 +100,7 @@ export default function Home() {
           <div style={styles.titleBar}>
             <div style={styles.titleLeft}>
               <img src="/print.png" style={{ width: '16px', height: '16px', imageRendering: 'pixelated' }} alt="icon" />
-              <span style={styles.titleText}>Memestonks.exe</span>
+              <span style={styles.titleText}>Launch a Stonk</span>
             </div>
             <div style={styles.titleButtons}>
               <button style={styles.titleBtn}>_</button>
